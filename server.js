@@ -33,8 +33,8 @@ const port = process.env.PORT || 4000;
 const server = http.createServer(app);
 
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://kgsuper.vercel.app",
+ 
+  "https://kgsuper.vercel.app/",
 ];
 
 /* ---------------- SOCKET STATE ---------------- */
