@@ -128,31 +128,46 @@ export const stripeWebhooks = async (req, res) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (error) {
+    console.log("❌ Webhook signature failed:", error.message);
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
 
-  switch (event.type) {
-    case "payment_intent.succeeded": {
-      const paymentIntent = event.data.object;
-      const sessions = await stripeInstance.checkout.sessions.list({ payment_intent: paymentIntent.id });
-      const { orderId, userId } = sessions.data[0].metadata;
+  console.log("✅ Stripe Event:", event.type);
 
-      await Order.findByIdAndUpdate(orderId, { isPaid: true });
-      await User.findByIdAndUpdate(userId, { cartItems: {} });
+  switch (event.type) {
+
+    // ✅ PAYMENT SUCCESS
+    case "checkout.session.completed": {
+      const session = event.data.object;
+      const { orderId, userId } = session.metadata;
+
+      console.log("💰 Payment Success for Order:", orderId);
+
+      await Order.findByIdAndUpdate(orderId, {
+        isPaid: true,
+        status: "Processing"
+      });
+
+      await User.findByIdAndUpdate(userId, {
+        cartItems: {}
+      });
+
       break;
     }
 
-    case "payment_intent.payment_failed": {
-      const paymentIntent = event.data.object;
-      const sessions = await stripeInstance.checkout.sessions.list({ payment_intent: paymentIntent.id });
-      const orderId = sessions.data[0].metadata.orderId;
+    // ❌ PAYMENT FAILED / EXPIRED
+    case "checkout.session.expired": {
+      const session = event.data.object;
+      const orderId = session.metadata.orderId;
+
+      console.log("❌ Payment Expired for Order:", orderId);
 
       await Order.findByIdAndDelete(orderId);
       break;
     }
 
     default:
-      console.log(`Unhandled event ${event.type}`);
+      console.log(`⚠️ Unhandled event type ${event.type}`);
   }
 
   res.json({ received: true });
