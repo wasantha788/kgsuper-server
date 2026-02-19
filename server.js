@@ -34,7 +34,7 @@ const server = http.createServer(app);
 
 const allowedOrigins = [
 
-  "https://kgsuper-client-hi81wj2wo-wasanthas-projects.vercel.app",
+  "https://kgsuper-client-production.up.railway.app",
 ];
 
 /* ---------------- SOCKET STATE ---------------- */
