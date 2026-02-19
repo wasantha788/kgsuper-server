@@ -1,6 +1,4 @@
-import dotenv from "dotenv";
-dotenv.config();
-
+import "dotenv/config"; // Shorthand for import + config
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -9,12 +7,10 @@ import { Server } from "socket.io";
 
 import connectDB from "./configs/db.js";
 import connectCloudinary from "./configs/cloudinary.js";
+import { setIO } from "./socket.js";
 import { stripeWebhooks } from "./controllers/orderControler.js";
 
-// Models & Routes (Keeping your imports as they were)
-import Order from "./models/Order.js";
-import DeliveryBoy from "./models/DeliveryBoy.js";
-import OrderHistory from "./models/OrderHistory.js";
+// Routes
 import userRouter from "./routes/userRoute.js";
 import sellerRouter from "./routes/sellerRoute.js";
 import productRouter from "./routes/productRoute.js";
@@ -27,53 +23,50 @@ import deliveryRoutes from "./routes/deliveryRoute.js";
 import analyticsRoutes from "./routes/analyticsRoute.js";
 
 const app = express();
-const port = process.env.PORT || 8080;
+// Railway automatically injects the PORT variable. 
+// Use 0.0.0.0 to ensure it's accessible externally.
+const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
-/* ---------------- FIX 1: ALLOWED ORIGINS ---------------- */
-// You must include your Vercel URL here or it will block the "fetch"
+// Update allowedOrigins to include your production frontend URL
 const allowedOrigins = [
-  "https://kgsuper-client-production.up.railway.app", // Railway client if you have one
-                        
+
+  "https://kgsuper.vercel.app",
+  /\.railway\.app$/ // Allows any railway subdomains if needed
 ];
 
-/* ---------------- SOCKET STATE ---------------- */
-const deliveryBoys = new Map();
-const activeConnections = new Map();
-const userNames = new Map();
-
-(async () => {
+const startServer = async () => {
   try {
-    /* 1️⃣ CONNECT DATABASE */
+    // 1️⃣ CONNECT SERVICES
     await connectDB();
     await connectCloudinary();
     console.log("✅ Database & Cloudinary connected");
 
-    /* 2️⃣ STRIPE WEBHOOK */
+    // 2️⃣ STRIPE WEBHOOK (Must be before express.json)
     app.post(
       "/stripe",
       express.raw({ type: "application/json" }),
       stripeWebhooks
     );
 
-    /* 3️⃣ MIDDLEWARE FIX: Expanded CORS */
+    // 3️⃣ MIDDLEWARE
     app.use(express.json());
     app.use(cookieParser());
-    app.use(cors({ 
-      origin: function (origin, callback) {
-        // allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-          return callback(new Error('CORS policy violation'), false);
-        }
-        return callback(null, true);
-      }, 
-      credentials: true 
-    }));
+    app.use(
+      cors({
+        origin: allowedOrigins,
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE"],
+      })
+    );
 
-    /* 4️⃣ STATIC & ROUTES */
+    // 4️⃣ STATIC FILES
     app.use("/uploads", express.static("uploads"));
-    app.get("/", (req, res) => res.send("API is Working ✅"));
+
+    // 5️⃣ ROUTES
+    app.get("/", (req, res) => res.status(200).send("API is Working ✅"));
+    app.get("/health", (req, res) => res.status(200).send("OK")); // Health check for Railway
+
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
     app.use("/api", sellerRegisterRoutes);
@@ -85,28 +78,25 @@ const userNames = new Map();
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
 
-    /* 5️⃣ SOCKET.IO FIX: Added CORS to Socket */
+    // 6️⃣ SOCKET.IO
     const io = new Server(server, {
-      cors: { 
+      cors: {
         origin: allowedOrigins,
         methods: ["GET", "POST"],
-        credentials: true
       },
     });
+    setIO(io);
 
-    // ... (Your Socket.io logic remains the same) ...
-    io.on("connection", (socket) => {
-        console.log("🔌 New connection:", socket.id);
-        // ... (rest of your socket logic)
-    });
-
-    /* 6️⃣ START SERVER FIX: Added '0.0.0.0' */
-    server.listen(port, '0.0.0.0', () => {
-      console.log(`🚀 Server running on port ${port}`);
+    // 7️⃣ START SERVER
+    // Explicitly binding to 0.0.0.0 is best practice for cloud deployments
+    server.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on port ${PORT}`);
     });
 
   } catch (error) {
-    console.error("❌ Server failed:", error);
+    console.error("❌ Server failed to start:", error);
     process.exit(1);
   }
-})();
+};
+
+startServer();
