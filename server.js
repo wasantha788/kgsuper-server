@@ -29,7 +29,7 @@ const app = express();
 const port = process.env.PORT || 4000;
 const server = http.createServer(app);
 
-const allowedOrigins = ["http://localhost:5173","https://kgsuper.vercel.app"];
+const allowedOrigins = ["https://kgsuper-client-production.up.railway.app"];
 
 
 (async () => {
