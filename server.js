@@ -31,7 +31,7 @@ const server = http.createServer(app);
 // Update allowedOrigins to include your production frontend URL
 const allowedOrigins = [
 
-  "https://kgsuper.vercel.app",
+  "https://kgsuper-client-production.up.railway.app",
   /\.railway\.app$/ // Allows any railway subdomains if needed
 ];
 
