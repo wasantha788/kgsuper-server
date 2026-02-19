@@ -33,10 +33,8 @@ const server = http.createServer(app);
 /* ---------------- FIX 1: ALLOWED ORIGINS ---------------- */
 // You must include your Vercel URL here or it will block the "fetch"
 const allowedOrigins = [
-  "https://kgsuper-client-production.up.railway.app", // Railway client if you have one
-  "https://kgsuper.vercel.app",                      // ADD YOUR VERCEL URL HERE
-  "http://localhost:5173",                          // For local testing (Vite)
-  "http://localhost:3000"                           // For local testing (React)
+  "https://kgsuper-client-production.up.railway.app/", // Railway client if you have one
+                        
 ];
 
 /* ---------------- SOCKET STATE ---------------- */
