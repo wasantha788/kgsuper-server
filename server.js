@@ -33,7 +33,7 @@ const server = http.createServer(app);
 /* ---------------- FIX 1: ALLOWED ORIGINS ---------------- */
 // You must include your Vercel URL here or it will block the "fetch"
 const allowedOrigins = [
-  "https://kgsuper-client-production.up.railway.app/", // Railway client if you have one
+  "https://kgsuper-client-production.up.railway.app", // Railway client if you have one
                         
 ];
 
