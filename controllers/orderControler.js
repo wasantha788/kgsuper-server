@@ -44,14 +44,14 @@ export const placeOrderCOD = async (req, res) => {
   }
 };
 
-// ------------------------
-// PLACE ORDER - STRIPE
+         // ------------------------
+// PLACE ORDER - STRIPE (fixed)
 // ------------------------
 export const placeOrderStripe = async (req, res) => {
   try {
     const { items, address, chatEnabled, locationEnabled } = req.body;
     const userId = req.user.id;
-    const userEmail = req.user.email; // Make sure email is available
+    const userEmail = req.user.email;
     const { origin } = req.headers;
 
     if (!userId || !address || !items || items.length === 0 || !userEmail) {
@@ -79,9 +79,10 @@ export const placeOrderStripe = async (req, res) => {
       });
     }
 
-    const totalAmount = +(subtotal * (1 + TAX_RATE)).toFixed(2);
+    const tax = +(subtotal * TAX_RATE).toFixed(2);
+    const totalAmount = +(subtotal + tax).toFixed(2);
 
-    // Create order in database (isPaid=false)
+    // Create order in DB (isPaid=false)
     const order = await Order.create({
       user: userId,
       items,
@@ -93,22 +94,34 @@ export const placeOrderStripe = async (req, res) => {
       locationEnabled: locationEnabled ?? false,
     });
 
-    // Build Stripe line items
+    // Build Stripe line items (without tax)
     const line_items = productData.map((item) => ({
       price_data: {
         currency: "lkr",
         product_data: { name: item.name },
-        unit_amount: Math.round(item.price * (1 + TAX_RATE) * 100), // in cents
+        unit_amount: Math.round(item.price * 100), // price in cents
       },
       quantity: item.quantity,
     }));
+
+    // Add tax as a separate line item
+    if (tax > 0) {
+      line_items.push({
+        price_data: {
+          currency: "lkr",
+          product_data: { name: `Tax (${TAX_RATE * 100}%)` },
+          unit_amount: Math.round(tax * 100),
+        },
+        quantity: 1,
+      });
+    }
 
     // Create Stripe Checkout session
     const session = await stripeInstance.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items,
       mode: "payment",
-      customer_email: userEmail, // ✅ Required for receipts
+      customer_email: userEmail,
       success_url: `${origin}/loader?next=my-orders`,
       cancel_url: `${origin}/cart`,
       metadata: { orderId: order._id.toString(), userId },
