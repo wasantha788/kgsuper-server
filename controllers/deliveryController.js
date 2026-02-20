@@ -17,16 +17,17 @@ const generateToken = (id) =>
     expiresIn: "7d",
   });
 
-  // Email transporter setup
+ 
 // Email transporter setup
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.gmail.com",
-  port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587,
-  secure: false, // true for 465, false for 587
+  service: 'gmail', // Let nodemailer handle the host/port/secure logic
   auth: {
-    user: process.env.EMAIL_USER, // Use the variable from Railway
-    pass: process.env.EMAIL_PASS, // Use the App Password from Railway
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS, // Ensure this is the 16-digit App Password
   },
+  tls: {
+    rejectUnauthorized: false // Helps prevent timeout during TLS handshake
+  }
 });
 
 /* =========================
