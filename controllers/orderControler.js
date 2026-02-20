@@ -4,8 +4,9 @@ import User from "../models/user.js";
 import Stripe from "stripe";
 import DeliveryBoy from "../models/DeliveryBoy.js";
 
-
-// ------------------------  PLACE ORDER - COD 
+// ------------------------
+// PLACE ORDER - COD
+// ------------------------
 export const placeOrderCOD = async (req, res) => {
   try {
     const { userId, items, address, chatEnabled, locationEnabled } = req.body;
@@ -23,50 +24,45 @@ export const placeOrderCOD = async (req, res) => {
       amount += price * item.quantity;
     }
 
-    // Add 2% tax
-    amount = +(amount * 1.02).toFixed(2);
+    // Add 2% Tax
+    amount += Math.floor(amount * 0.02);
 
     const order = await Order.create({
-      user: userId, // use userId from frontend payload
+      user: req.user.id,
       items,
       amount,
       address,
       paymentType: "COD",
       isPaid: false,
-      chatEnabled: chatEnabled ?? true, // default true as per frontend
-      locationEnabled: locationEnabled ?? true,
-      status: "Order Placed", // initial status
+      chatEnabled: chatEnabled ?? false,
+      locationEnabled: locationEnabled ?? false,
     });
 
     res.json({ success: true, message: "Order placed successfully", order });
   } catch (error) {
-    console.error("COD Order Error:", error);
     res.json({ success: false, message: error.message });
   }
 };
 
-
-
-// PLACE ORDER - STRIPE ------------------------
-
+// ------------------------
+// PLACE ORDER - STRIPE
+// ------------------------
 export const placeOrderStripe = async (req, res) => {
   try {
     const { items, address, chatEnabled, locationEnabled } = req.body;
-    const userId = req.user?.id || req.body.userId; // fallback for webhook
-    const userEmail = req.user?.email;
-    const origin = req.headers.origin;
+    const userId = req.user.id;
+    const { origin } = req.headers;
 
-    if (!userId || !address || !items || items.length === 0 || !userEmail) {
+    if (!userId || !address || !items || items.length === 0) {
       return res.json({ success: false, message: "Invalid order data" });
     }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const TAX_RATE = 0.02;
+    const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const TAX_RATE = 0.02; // 2% tax
 
+    const productData = [];
     let subtotal = 0;
-    const line_items = [];
 
-    // Build product data
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) continue;
@@ -74,32 +70,15 @@ export const placeOrderStripe = async (req, res) => {
       const price = product.offerPrice ?? product.price;
       subtotal += price * item.quantity;
 
-      line_items.push({
-        price_data: {
-          currency: "lkr",
-          product_data: { name: product.name },
-          unit_amount: Math.round(price * 100), // in cents
-        },
+      productData.push({
+        name: product.name,
+        price,
         quantity: item.quantity,
       });
     }
 
-    const tax = +(subtotal * TAX_RATE).toFixed(2);
-    const totalAmount = +(subtotal + tax).toFixed(2);
+    const totalAmount = +(subtotal * (1 + TAX_RATE)).toFixed(2);
 
-    // Add tax as a separate line item
-    if (tax > 0) {
-      line_items.push({
-        price_data: {
-          currency: "lkr",
-          product_data: { name: `Tax (${TAX_RATE * 100}%)` },
-          unit_amount: Math.round(tax * 100),
-        },
-        quantity: 1,
-      });
-    }
-
-    // Create order in DB
     const order = await Order.create({
       user: userId,
       items,
@@ -107,17 +86,22 @@ export const placeOrderStripe = async (req, res) => {
       address,
       paymentType: "online",
       isPaid: false,
-      chatEnabled: chatEnabled ?? true,
-      locationEnabled: locationEnabled ?? true,
-      status: "Order Placed",
+      chatEnabled: chatEnabled ?? false,
+      locationEnabled: locationEnabled ?? false,
     });
 
-    // Create Stripe Checkout session
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
+    const line_items = productData.map((item) => ({
+      price_data: {
+        currency: "lkr",
+        product_data: { name: item.name },
+        unit_amount: Math.round(item.price * (1 + TAX_RATE) * 100),
+      },
+      quantity: item.quantity,
+    }));
+
+    const session = await stripeInstance.checkout.sessions.create({
       line_items,
       mode: "payment",
-      customer_email: userEmail,
       success_url: `${origin}/loader?next=my-orders`,
       cancel_url: `${origin}/cart`,
       metadata: { orderId: order._id.toString(), userId },
@@ -125,39 +109,65 @@ export const placeOrderStripe = async (req, res) => {
 
     return res.json({ success: true, url: session.url });
   } catch (error) {
-    console.error("Stripe Checkout Error:", error);
     res.json({ success: false, message: error.message });
   }
 };
 
-
-// ------------------------ STRIPE WEBHOOK 
+// ------------------------
+// STRIPE WEBHOOK
+// ------------------------
 export const stripeWebhooks = async (req, res) => {
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
   const sig = req.headers["stripe-signature"];
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    event = stripeInstance.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
   } catch (error) {
-    console.error("Webhook signature failed:", error.message);
+    console.log("❌ Webhook signature failed:", error.message);
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const { orderId, userId } = session.metadata;
+  console.log("✅ Stripe Event:", event.type);
 
-    await Order.findByIdAndUpdate(orderId, {
-      isPaid: true,
-      paidAt: new Date(),
-      paymentIntentId: session.payment_intent,
-      status: "Processing",
-    });
+  switch (event.type) {
 
-    await User.findByIdAndUpdate(userId, { cartItems: [] });
+    // ✅ PAYMENT SUCCESS
+    case "checkout.session.completed": {
+      const session = event.data.object;
+      const { orderId, userId } = session.metadata;
 
-    console.log(`✅ Order ${orderId} marked as paid.`);
+      console.log("💰 Payment Success for Order:", orderId);
+
+      await Order.findByIdAndUpdate(orderId, {
+        isPaid: true,
+        status: "Processing"
+      });
+
+      await User.findByIdAndUpdate(userId, {
+        cartItems: {}
+      });
+
+      break;
+    }
+
+    // ❌ PAYMENT FAILED / EXPIRED
+    case "checkout.session.expired": {
+      const session = event.data.object;
+      const orderId = session.metadata.orderId;
+
+      console.log("❌ Payment Expired for Order:", orderId);
+
+      await Order.findByIdAndDelete(orderId);
+      break;
+    }
+
+    default:
+      console.log(`⚠️ Unhandled event type ${event.type}`);
   }
 
   res.json({ received: true });
