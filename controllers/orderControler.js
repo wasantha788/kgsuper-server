@@ -43,17 +43,18 @@ export const placeOrderCOD = async (req, res) => {
     res.json({ success: false, message: error.message });
   }
 };
-
 // ------------------------
 // PLACE ORDER - STRIPE
 // ------------------------
+
 export const placeOrderStripe = async (req, res) => {
   try {
     const { items, address, chatEnabled, locationEnabled } = req.body;
     const userId = req.user.id;
+    const userEmail = req.user.email; // Make sure email is available
     const { origin } = req.headers;
 
-    if (!userId || !address || !items || items.length === 0) {
+    if (!userId || !address || !items || items.length === 0 || !userEmail) {
       return res.json({ success: false, message: "Invalid order data" });
     }
 
@@ -63,6 +64,7 @@ export const placeOrderStripe = async (req, res) => {
     const productData = [];
     let subtotal = 0;
 
+    // Build product data and calculate subtotal
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) continue;
@@ -79,6 +81,7 @@ export const placeOrderStripe = async (req, res) => {
 
     const totalAmount = +(subtotal * (1 + TAX_RATE)).toFixed(2);
 
+    // Create order in database
     const order = await Order.create({
       user: userId,
       items,
@@ -90,18 +93,22 @@ export const placeOrderStripe = async (req, res) => {
       locationEnabled: locationEnabled ?? false,
     });
 
+    // Build Stripe line items
     const line_items = productData.map((item) => ({
       price_data: {
         currency: "lkr",
         product_data: { name: item.name },
-        unit_amount: Math.round(item.price * (1 + TAX_RATE) * 100),
+        unit_amount: Math.round(item.price * (1 + TAX_RATE) * 100), // in cents
       },
       quantity: item.quantity,
     }));
 
+    // Create Stripe Checkout session
     const session = await stripeInstance.checkout.sessions.create({
+      payment_method_types: ["card"],
       line_items,
       mode: "payment",
+      customer_email: userEmail, // ✅ REQUIRED for automatic receipts
       success_url: `${origin}/loader?next=my-orders`,
       cancel_url: `${origin}/cart`,
       metadata: { orderId: order._id.toString(), userId },
@@ -109,6 +116,7 @@ export const placeOrderStripe = async (req, res) => {
 
     return res.json({ success: true, url: session.url });
   } catch (error) {
+    console.error("Stripe Checkout Error:", error);
     res.json({ success: false, message: error.message });
   }
 };
