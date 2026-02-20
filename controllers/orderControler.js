@@ -218,7 +218,7 @@ export const getUserOrders = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const orders = await Order.find({ userId })
+    const orders = await Order.find({ user: userId })  // ✅ FIXED
       .populate("items.product")
       .populate("address")
       .sort({ createdAt: -1 });
@@ -228,6 +228,7 @@ export const getUserOrders = async (req, res) => {
     res.json({ success: false, message: error.message });
   }
 };
+
 
 
 // ------------------------
