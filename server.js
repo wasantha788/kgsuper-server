@@ -1,4 +1,4 @@
-import "dotenv/config"; // Shorthand for import + config
+import "dotenv/config";
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -23,33 +23,24 @@ import deliveryRoutes from "./routes/deliveryRoute.js";
 import analyticsRoutes from "./routes/analyticsRoute.js";
 
 const app = express();
-// Railway automatically injects the PORT variable. 
-// Use 0.0.0.0 to ensure it's accessible externally.
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
-// Update allowedOrigins to include your production frontend URL
 const allowedOrigins = [
-
   "https://kgsuper-client-production.up.railway.app",
-  /\.railway\.app$/ // Allows any railway subdomains if needed
+  /\.railway\.app$/
 ];
 
 const startServer = async () => {
   try {
-    // 1️⃣ CONNECT SERVICES
     await connectDB();
     await connectCloudinary();
     console.log("✅ Database & Cloudinary connected");
 
-    // 2️⃣ STRIPE WEBHOOK (Must be before express.json)
-    app.post(
-      "/stripe",
-      express.raw({ type: "application/json" }),
-      stripeWebhooks
-    );
+    // STRIPE WEBHOOK (before express.json())
+    app.post("/api/webhook", express.raw({ type: "application/json" }), stripeWebhooks);
 
-    // 3️⃣ MIDDLEWARE
+    // MIDDLEWARE
     app.use(express.json());
     app.use(cookieParser());
     app.use(
@@ -60,12 +51,12 @@ const startServer = async () => {
       })
     );
 
-    // 4️⃣ STATIC FILES
+    // STATIC FILES
     app.use("/uploads", express.static("uploads"));
 
-    // 5️⃣ ROUTES
+    // ROUTES
     app.get("/", (req, res) => res.status(200).send("API is Working ✅"));
-    app.get("/health", (req, res) => res.status(200).send("OK")); // Health check for Railway
+    app.get("/health", (req, res) => res.status(200).send("OK"));
 
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
@@ -78,17 +69,12 @@ const startServer = async () => {
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
 
-    // 6️⃣ SOCKET.IO
+    // SOCKET.IO
     const io = new Server(server, {
-      cors: {
-        origin: allowedOrigins,
-        methods: ["GET", "POST"],
-      },
+      cors: { origin: allowedOrigins, methods: ["GET", "POST"] },
     });
     setIO(io);
 
-    // 7️⃣ START SERVER
-    // Explicitly binding to 0.0.0.0 is best practice for cloud deployments
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
