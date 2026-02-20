@@ -3,7 +3,8 @@ import Product from "../models/product.js";
 import User from "../models/user.js";
 import Stripe from "stripe";
 import DeliveryBoy from "../models/DeliveryBoy.js";
-
+import { generateInvoice } from "../utils/generateInvoice.js";
+import { sendReceiptEmail } from "../utils/sendReceipt.js";
 // ------------------------
 // PLACE ORDER - COD
 // ------------------------
@@ -134,17 +135,47 @@ export const stripeWebhooks = async (req, res) => {
   switch (event.type) {
     case "payment_intent.succeeded": {
       const paymentIntent = event.data.object;
-      const sessions = await stripeInstance.checkout.sessions.list({ payment_intent: paymentIntent.id });
+
+      const sessions = await stripeInstance.checkout.sessions.list({
+        payment_intent: paymentIntent.id,
+      });
+
+      if (!sessions.data.length) break;
+
       const { orderId, userId } = sessions.data[0].metadata;
 
-      await Order.findByIdAndUpdate(orderId, { isPaid: true });
-      await User.findByIdAndUpdate(userId, { cartItems: {} });
+      const order = await Order.findByIdAndUpdate(
+        orderId,
+        { isPaid: true, status: "Processing" },
+        { new: true }
+      );
+
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { cartItems: {} },
+        { new: true }
+      );
+
+      if (order && user) {
+        // ✅ Generate PDF
+        const invoicePath = await generateInvoice(order, user);
+
+        // ✅ Send Email with PDF
+        await sendReceiptEmail(user.email, invoicePath);
+      }
+
       break;
     }
 
     case "payment_intent.payment_failed": {
       const paymentIntent = event.data.object;
-      const sessions = await stripeInstance.checkout.sessions.list({ payment_intent: paymentIntent.id });
+
+      const sessions = await stripeInstance.checkout.sessions.list({
+        payment_intent: paymentIntent.id,
+      });
+
+      if (!sessions.data.length) break;
+
       const orderId = sessions.data[0].metadata.orderId;
 
       await Order.findByIdAndDelete(orderId);
@@ -156,24 +187,6 @@ export const stripeWebhooks = async (req, res) => {
   }
 
   res.json({ received: true });
-};
-
-// ------------------------
-// GET USER ORDERS
-// ------------------------
-export const getUserOrders = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    const orders = await Order.find({ user: userId })
-      .populate("items.product")
-      .populate("address")
-      .sort({ createdAt: -1 });
-
-    res.json({ success: true, orders });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
-  }
 };
 
 // ------------------------
