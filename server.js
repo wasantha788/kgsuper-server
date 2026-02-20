@@ -9,6 +9,7 @@ import connectDB from "./configs/db.js";
 import connectCloudinary from "./configs/cloudinary.js";
 import { setIO } from "./socket.js";
 import { stripeWebhooks } from "./controllers/orderControler.js";
+import bodyParser from "body-parser";
 
 // Routes
 import userRouter from "./routes/userRoute.js";
@@ -44,10 +45,10 @@ const startServer = async () => {
 
     // 2️⃣ STRIPE WEBHOOK (Must be before express.json)
     app.post(
-      "/stripe",
-      express.raw({ type: "application/json" }),
-      stripeWebhooks
-    );
+  "/stripe",
+  bodyParser.raw({ type: "application/json" }),
+  stripeWebhooks
+);
 
     // 3️⃣ MIDDLEWARE
     app.use(express.json());
@@ -77,7 +78,7 @@ const startServer = async () => {
     app.use("/api/order", orderRouter);
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
-   
+
     // 6️⃣ SOCKET.IO
     const io = new Server(server, {
       cors: {

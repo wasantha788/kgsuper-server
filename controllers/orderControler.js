@@ -134,44 +134,51 @@ export const stripeWebhooks = async (req, res) => {
 
   console.log("✅ Stripe Event:", event.type);
 
-  switch (event.type) {
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const { orderId, userId } = session.metadata;
 
-    // ✅ PAYMENT SUCCESS
-    case "checkout.session.completed": {
-      const session = event.data.object;
-      const { orderId, userId } = session.metadata;
+        console.log("💰 Payment Success for Order:", orderId);
 
-      console.log("💰 Payment Success for Order:", orderId);
+        const order = await Order.findById(orderId);
+        if (order) {
+          order.isPaid = true;
+          order.status = "Processing";
+          await order.save();
+        } else {
+          console.warn("Order not found:", orderId);
+        }
 
-      await Order.findByIdAndUpdate(orderId, {
-        isPaid: true,
-        status: "Processing"
-      });
+        const user = await User.findById(userId);
+        if (user) {
+          user.cartItems = {};
+          await user.save();
+        }
 
-      await User.findByIdAndUpdate(userId, {
-        cartItems: {}
-      });
+        break;
+      }
 
-      break;
+      case "checkout.session.expired": {
+        const session = event.data.object;
+        const orderId = session.metadata.orderId;
+
+        console.log("❌ Payment Expired for Order:", orderId);
+        await Order.findByIdAndDelete(orderId);
+        break;
+      }
+
+      default:
+        console.log(`⚠️ Unhandled event type ${event.type}`);
     }
-
-    // ❌ PAYMENT FAILED / EXPIRED
-    case "checkout.session.expired": {
-      const session = event.data.object;
-      const orderId = session.metadata.orderId;
-
-      console.log("❌ Payment Expired for Order:", orderId);
-
-      await Order.findByIdAndDelete(orderId);
-      break;
-    }
-
-    default:
-      console.log(`⚠️ Unhandled event type ${event.type}`);
+  } catch (err) {
+    console.error("Webhook processing error:", err);
   }
 
   res.json({ received: true });
 };
+
 
 // ------------------------
 // GET USER ORDERS
