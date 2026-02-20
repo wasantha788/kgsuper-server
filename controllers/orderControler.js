@@ -128,57 +128,35 @@ export const stripeWebhooks = async (req, res) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (error) {
-    console.log("❌ Webhook signature failed:", error.message);
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
 
-  console.log("✅ Stripe Event:", event.type);
+  switch (event.type) {
+    case "payment_intent.succeeded": {
+      const paymentIntent = event.data.object;
+      const sessions = await stripeInstance.checkout.sessions.list({ payment_intent: paymentIntent.id });
+      const { orderId, userId } = sessions.data[0].metadata;
 
-  try {
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object;
-        const { orderId, userId } = session.metadata;
-
-        console.log("💰 Payment Success for Order:", orderId);
-
-        const order = await Order.findById(orderId);
-        if (order) {
-          order.isPaid = true;
-          order.status = "Processing";
-          await order.save();
-        } else {
-          console.warn("Order not found:", orderId);
-        }
-
-        const user = await User.findById(userId);
-        if (user) {
-          user.cartItems = {};
-          await user.save();
-        }
-
-        break;
-      }
-
-      case "checkout.session.expired": {
-        const session = event.data.object;
-        const orderId = session.metadata.orderId;
-
-        console.log("❌ Payment Expired for Order:", orderId);
-        await Order.findByIdAndDelete(orderId);
-        break;
-      }
-
-      default:
-        console.log(`⚠️ Unhandled event type ${event.type}`);
+      await Order.findByIdAndUpdate(orderId, { isPaid: true });
+      await User.findByIdAndUpdate(userId, { cartItems: {} });
+      break;
     }
-  } catch (err) {
-    console.error("Webhook processing error:", err);
+
+    case "payment_intent.payment_failed": {
+      const paymentIntent = event.data.object;
+      const sessions = await stripeInstance.checkout.sessions.list({ payment_intent: paymentIntent.id });
+      const orderId = sessions.data[0].metadata.orderId;
+
+      await Order.findByIdAndDelete(orderId);
+      break;
+    }
+
+    default:
+      console.log(`Unhandled event ${event.type}`);
   }
 
   res.json({ received: true });
 };
-
 
 // ------------------------
 // GET USER ORDERS
