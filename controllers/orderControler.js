@@ -43,9 +43,7 @@ export const placeOrderCOD = async (req, res) => {
     res.json({ success: false, message: error.message });
   }
 };
-// ------------------------
-// PLACE ORDER - STRIPE
-// ------------------------
+
 // ------------------------
 // PLACE ORDER - STRIPE
 // ------------------------
@@ -126,7 +124,7 @@ export const placeOrderStripe = async (req, res) => {
 // ------------------------
 // STRIPE WEBHOOK
 // ------------------------
-import bodyParser from "body-parser"; // Add this in your server file
+
 
 export const stripeWebhooks = async (req, res) => {
   const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -174,6 +172,7 @@ export const stripeWebhooks = async (req, res) => {
 
   res.json({ received: true });
 };
+
 
 // ------------------------
 // GET USER ORDERS
