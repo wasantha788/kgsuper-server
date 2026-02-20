@@ -18,13 +18,14 @@ const generateToken = (id) =>
   });
 
   // Email transporter setup
+// Email transporter setup
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587,
-  secure: false, // true for 465, false for other ports
+  secure: false, // true for 465, false for 587
   auth: {
-    user: "kgsupershop@gmail.com", // your email from .env
-    pass: "nwmtkerqgbsgaeyf", // your email password from .env
+    user: process.env.EMAIL_USER, // Use the variable from Railway
+    pass: process.env.EMAIL_PASS, // Use the App Password from Railway
   },
 });
 
@@ -368,76 +369,123 @@ export const saveOrderHistory = async ({
   }
 };
 
-
-
 export const sendPaymentOTP = async (req, res) => {
-  const { orderId } = req.params;
+  try {
+    const { orderId } = req.params;
 
-  const order = await Order.findById(orderId).populate("user");
-  if (!order) return res.status(404).json({ message: "Order not found" });
+    // 1. Find order and populate user
+    const order = await Order.findById(orderId).populate("user");
+    
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
 
-  if (order.isPaid)
-    return res.status(400).json({ message: "Already paid" });
+    // Check if email exists after population
+    if (!order.user || !order.user.email) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Customer email not found. Check if 'user' field is populated correctly." 
+      });
+    }
 
-  // 1️⃣ Generate OTP
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    if (order.isPaid) {
+      return res.status(400).json({ success: false, message: "Already paid" });
+    }
 
-  // 2️⃣ Hash OTP
-  const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
+    // 2. Generate and Hash OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
 
-  // 3️⃣ Save OTP to order
-  order.paymentOTP = hashedOTP;
-  order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 mins
-  await order.save();
+    // 3. Save to database
+    order.paymentOTP = hashedOTP;
+    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 mins
+    await order.save();
 
-  // 4️⃣ Send email
-  await transporter.sendMail({
-    from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
-    to: order.user.email,
-    subject: "Payment Confirmation OTP",
-    html: `
-      <h2>Your Payment OTP</h2>
-      <h1>${otp}</h1>
-      <p>Give this OTP to the delivery boy.</p>
-      <p>Valid for 5 minutes.</p>
-    `,
-  });
+    // 4. Send email with error handling
+    const mailOptions = {
+      from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
+      to: order.user.email,
+      subject: "Payment Confirmation OTP",
+      html: `
+        <div style="font-family: sans-serif; text-align: center;">
+          <h2>Your Payment OTP</h2>
+          <h1 style="color: #2c3e50; font-size: 40px; letter-spacing: 5px;">${otp}</h1>
+          <p>Give this OTP to the delivery boy to confirm your payment.</p>
+          <p style="color: red;">Valid for 5 minutes.</p>
+        </div>
+      `,
+    };
 
-  res.json({ message: "OTP sent to customer email" });
+    await transporter.sendMail(mailOptions);
+
+    // 5. Final Response
+    return res.json({ success: true, message: "OTP sent to customer email" });
+
+  } catch (error) {
+    console.error("OTP Error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error", 
+      error: error.message 
+    });
+  }
 };
-
 
 
 
 export const verifyPaymentOTP = async (req, res) => {
-  const { orderId } = req.params;
-  const { otp } = req.body;
+  try {
+    const { orderId } = req.params;
+    const { otp } = req.body;
 
-  const order = await Order.findById(orderId);
-  if (!order) return res.status(404).json({ message: "Order not found" });
+    // 1. Find the order
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
 
-  if (!order.paymentOTP)
-    return res.status(400).json({ message: "OTP not generated" });
+    // 2. Validation checks
+    if (!order.paymentOTP) {
+      return res.status(400).json({ success: false, message: "OTP not generated or already verified" });
+    }
 
-  if (order.paymentOTPExpire < Date.now())
-    return res.status(400).json({ message: "OTP expired" });
+    if (order.paymentOTPExpire < Date.now()) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please resend." });
+    }
 
-  const hashedOTP = crypto
-    .createHash("sha256")
-    .update(otp)
-    .digest("hex");
+    // 3. Hash and Compare
+    const hashedOTP = crypto
+      .createHash("sha256")
+      .update(otp.toString()) // Ensure OTP is treated as a string
+      .digest("hex");
 
-  if (hashedOTP !== order.paymentOTP)
-    return res.status(400).json({ message: "Invalid OTP" });
+    if (hashedOTP !== order.paymentOTP) {
+      return res.status(400).json({ success: false, message: "Invalid OTP. Please try again." });
+    }
 
-  // ✅ SUCCESS
-  order.isPaid = true;
-  order.paymentOTP = undefined;
-  order.paymentOTPExpire = undefined;
+    // 4. Update Order (Success)
+    order.isPaid = true;
+    order.status = "Delivered"; // Optional: Usually OTP verification happens at delivery
+    
+    // Clear the OTP fields so they can't be reused
+    order.paymentOTP = undefined;
+    order.paymentOTPExpire = undefined;
 
-  await order.save();
+    await order.save();
 
-  res.json({ message: "Payment confirmed successfully" });
+    // 5. Success Response
+    return res.json({ 
+      success: true, 
+      message: "Payment confirmed successfully",
+      order 
+    });
+
+  } catch (error) {
+    console.error("Verification Error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error", 
+      error: error.message 
+    });
+  }
 };
-
-
