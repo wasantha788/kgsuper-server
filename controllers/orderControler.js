@@ -212,6 +212,25 @@ export const getOrderById = async (req, res) => {
 };
 
 // ------------------------
+// GET USER ORDERS
+// ------------------------
+export const getUserOrders = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const orders = await Order.find({ userId })
+      .populate("items.product")
+      .populate("address")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, orders });
+  } catch (error) {
+    res.json({ success: false, message: error.message });
+  }
+};
+
+
+// ------------------------
 // ADMIN: GET ALL ORDERS
 // ------------------------
 export const getAllOrders = async (req, res) => {
