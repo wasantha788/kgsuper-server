@@ -9,7 +9,7 @@ import connectDB from "./configs/db.js";
 import connectCloudinary from "./configs/cloudinary.js";
 import { setIO } from "./socket.js";
 import { stripeWebhooks } from "./controllers/orderControler.js";
-import bodyParser from "body-parser";
+
 
 // Routes
 import userRouter from "./routes/userRoute.js";
@@ -44,11 +44,9 @@ const startServer = async () => {
     console.log("✅ Database & Cloudinary connected");
 
     // 2️⃣ STRIPE WEBHOOK (Must be before express.json)
-    app.post(
-  "/stripe",
-  bodyParser.raw({ type: "application/json" }),
-  stripeWebhooks
-);
+      // Stripe webhook BEFORE JSON parser
+    app.post("/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
+
 
     // 3️⃣ MIDDLEWARE
     app.use(express.json());
