@@ -21,15 +21,27 @@ const generateToken = (id) =>
 /* =========================
    EMAIL TRANSPORTER
 ========================= */
-const transporter = nodemailer.createTransport({
+export const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT), // 587
-  secure: false,
+  port: Number(process.env.SMTP_PORT),
+  secure: false, // true for 465, false for 587
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS, // App Password
   },
   tls: { rejectUnauthorized: false },
+  connectionTimeout: 10_000, // 10 seconds timeout
+  greetingTimeout: 10_000,
+  socketTimeout: 10_000,
+});
+
+// Test connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ SMTP Connection failed:", error);
+  } else {
+    console.log("✅ SMTP ready to send emails");
+  }
 });
 
 /* =========================
