@@ -1,4 +1,5 @@
-import "dotenv/config"; // Shorthand for import + config
+// server.js
+import "dotenv/config"; // Automatically loads .env variables
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -10,7 +11,6 @@ import connectCloudinary from "./configs/cloudinary.js";
 import { setIO } from "./socket.js";
 import { stripeWebhooks } from "./controllers/orderControler.js";
 
-
 // Routes
 import userRouter from "./routes/userRoute.js";
 import sellerRouter from "./routes/sellerRoute.js";
@@ -21,34 +21,44 @@ import orderRouter from "./routes/orderRoute.js";
 import sellerRequestRoute from "./routes/sellerRequestRoute.js";
 import sellerRegisterRoutes from "./routes/sellerRegisterRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoute.js";
-import analyticsRoutes from "./routes/analyticsRoute.js";
+import analyticsRoutes from "./routes/analyticsRoutes.js";
 
 const app = express();
-// Railway automatically injects the PORT variable. 
-// Use 0.0.0.0 to ensure it's accessible externally.
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
-// Update allowedOrigins to include your production frontend URL
+// Allowed origins for CORS
 const allowedOrigins = [
-
   "https://kgsuper-client-production.up.railway.app",
-  /\.railway\.app$/ // Allows any railway subdomains if needed
+  /\.railway\.app$/ // Any railway subdomain
 ];
 
 const startServer = async () => {
   try {
-    // 1️⃣ CONNECT SERVICES
-    await connectDB();
-    await connectCloudinary();
-    console.log("✅ Database & Cloudinary connected");
+    console.log("🚀 Starting server...");
 
-    // 2️⃣ STRIPE WEBHOOK (Must be before express.json)
-      // Stripe webhook BEFORE JSON parser
+    // 1️⃣ CONNECT TO DATABASE
+    try {
+      await connectDB();
+      console.log("✅ Database connected");
+    } catch (dbErr) {
+      console.error("❌ Database connection failed:", dbErr);
+      process.exit(1);
+    }
+
+    // 2️⃣ CONNECT TO CLOUDINARY
+    try {
+      await connectCloudinary();
+      console.log("✅ Cloudinary connected");
+    } catch (cloudErr) {
+      console.error("❌ Cloudinary connection failed:", cloudErr);
+      process.exit(1);
+    }
+
+    // 3️⃣ STRIPE WEBHOOK (BEFORE express.json)
     app.post("/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
 
-
-    // 3️⃣ MIDDLEWARE
+    // 4️⃣ MIDDLEWARE
     app.use(express.json());
     app.use(cookieParser());
     app.use(
@@ -59,13 +69,14 @@ const startServer = async () => {
       })
     );
 
-    // 4️⃣ STATIC FILES
+    // 5️⃣ STATIC FILES
     app.use("/uploads", express.static("uploads"));
 
-    // 5️⃣ ROUTES
+    // 6️⃣ BASIC ROUTES
     app.get("/", (req, res) => res.status(200).send("API is Working ✅"));
-    app.get("/health", (req, res) => res.status(200).send("OK")); // Health check for Railway
+    app.get("/health", (req, res) => res.status(200).send("OK")); // Railway health check
 
+    // 7️⃣ API ROUTES
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
     app.use("/api", sellerRegisterRoutes);
@@ -77,7 +88,7 @@ const startServer = async () => {
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
 
-    // 6️⃣ SOCKET.IO
+    // 8️⃣ SOCKET.IO
     const io = new Server(server, {
       cors: {
         origin: allowedOrigins,
@@ -86,14 +97,33 @@ const startServer = async () => {
     });
     setIO(io);
 
-    // 7️⃣ START SERVER
-    // Explicitly binding to 0.0.0.0 is best practice for cloud deployments
+    // 9️⃣ START SERVER
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
 
-  } catch (error) {
-    console.error("❌ Server failed to start:", error);
+    // 1️⃣0️⃣ Graceful shutdown on SIGTERM (Railway signals)
+    process.on("SIGTERM", () => {
+      console.log("🔹 SIGTERM received. Shutting down gracefully...");
+      server.close(() => {
+        console.log("Server closed");
+        process.exit(0);
+      });
+    });
+
+    // 1️⃣1️⃣ Catch uncaught exceptions & unhandled rejections
+    process.on("uncaughtException", (err) => {
+      console.error("❌ Uncaught Exception:", err);
+      process.exit(1);
+    });
+
+    process.on("unhandledRejection", (err) => {
+      console.error("❌ Unhandled Rejection:", err);
+      process.exit(1);
+    });
+
+  } catch (err) {
+    console.error("❌ Server failed to start:", err);
     process.exit(1);
   }
 };
