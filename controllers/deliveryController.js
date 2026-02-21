@@ -1,12 +1,12 @@
 import DeliveryBoy from "../models/DeliveryBoy.js";
 import Order from "../models/Order.js";
+import OrderHistory from "../models/OrderHistory.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import OrderHistory from "../models/OrderHistory.js";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-
 import dotenv from "dotenv";
+
 dotenv.config();
 
 /* =========================
@@ -17,17 +17,42 @@ const generateToken = (id) =>
     expiresIn: "7d",
   });
 
- 
-// Email transporter setup
+/* =========================
+   EMAIL TRANSPORTER
+========================= */
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,             // smtp.gmail.com
-  port: Number(process.env.SMTP_PORT),     // 587
-  secure: false,                           // false for TLS/STARTTLS
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT), // 587
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,         // App Password
+    pass: process.env.EMAIL_PASS,
   },
+  tls: { rejectUnauthorized: false },
 });
+
+/* =========================
+   SAVE ORDER HISTORY
+========================= */
+const saveOrderHistory = async ({
+  orderId,
+  deliveryBoyId,
+  action,
+  status,
+  note = "",
+}) => {
+  try {
+    await OrderHistory.create({
+      orderId,
+      deliveryBoy: deliveryBoyId,
+      action,
+      status,
+      note,
+    });
+  } catch (err) {
+    console.error("Order history save failed:", err.message);
+  }
+};
 
 /* =========================
    REGISTER DELIVERY BOY
@@ -36,21 +61,18 @@ export const registerDeliveryBoy = async (req, res) => {
   try {
     const { name, email, password, phone, vehicleType } = req.body;
 
-    // Check if email already exists
     const exists = await DeliveryBoy.findOne({ email });
     if (exists)
-      return res.json({ success: false, message: "Email already exists" });
+      return res.status(400).json({ success: false, message: "Email already exists" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create delivery boy with optional phone and vehicleType
     const deliveryBoy = await DeliveryBoy.create({
       name,
       email,
       password: hashedPassword,
-      phone: phone || "",           // optional
-      vehicleType: vehicleType || "", // optional
+      phone: phone || "",
+      vehicleType: vehicleType || "",
     });
 
     res.json({
@@ -58,12 +80,8 @@ export const registerDeliveryBoy = async (req, res) => {
       token: generateToken(deliveryBoy._id),
       user: {
         _id: deliveryBoy._id,
-        name: deliveryBoy.name,
-        email: deliveryBoy.email,
-        role: deliveryBoy.role,
-        isAvailable: deliveryBoy.isAvailable,
-        phone: deliveryBoy.phone,
-        vehicleType: deliveryBoy.vehicleType,
+        name,
+        email,
       },
     });
   } catch (error) {
@@ -80,11 +98,11 @@ export const loginDeliveryBoy = async (req, res) => {
 
     const deliveryBoy = await DeliveryBoy.findOne({ email });
     if (!deliveryBoy)
-      return res.json({ success: false, message: "Invalid email or password" });
+      return res.status(400).json({ success: false, message: "Invalid email or password" });
 
     const isMatch = await bcrypt.compare(password, deliveryBoy.password);
     if (!isMatch)
-      return res.json({ success: false, message: "Invalid email or password" });
+      return res.status(400).json({ success: false, message: "Invalid email or password" });
 
     res.json({
       success: true,
@@ -93,7 +111,6 @@ export const loginDeliveryBoy = async (req, res) => {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
-      
       },
     });
   } catch (error) {
@@ -102,31 +119,20 @@ export const loginDeliveryBoy = async (req, res) => {
 };
 
 /* =========================
-   GET DELIVERY BOY ORDERS (MY ORDERS)
+   GET MY ORDERS
 ========================= */
-
 export const getMyOrders = async (req, res) => {
   try {
-    const deliveryBoyId = req.deliveryBoy._id;
-
     const orders = await Order.find({
-      assignedDeliveryBoy: deliveryBoyId,
+      assignedDeliveryBoy: req.deliveryBoy._id,
+      status: { $ne: "Cancelled" },
     })
       .populate("assignedDeliveryBoy", "name phone vehicleType")
       .sort({ createdAt: -1 });
 
-    // ✅ ALWAYS respond
-    return res.status(200).json({
-      success: true,
-      orders: orders || [],
-    });
+    res.json({ success: true, orders });
   } catch (err) {
-    console.error("getMyOrders error:", err);
-    return res.status(500).json({
-      success: false,
-      orders: [],
-      message: "Failed to load orders",
-    });
+    res.status(500).json({ success: false, message: "Failed to load orders" });
   }
 };
 
@@ -136,97 +142,55 @@ export const getMyOrders = async (req, res) => {
 export const acceptOrder = async (req, res) => {
   try {
     const { orderId } = req.body;
-    const deliveryBoyId = req.deliveryBoy._id;
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
-    }
-
-    if (order.assignedDeliveryBoy) {
-      return res.status(400).json({
-        success: false,
-        message: "Order already assigned",
-      });
-    }
-
-    // Assign delivery boy
-    order.assignedDeliveryBoy = deliveryBoyId;
-    order.status = "Out for delivery";
-    await order.save();
-
-    // Populate delivery boy ONCE
-    await order.populate("assignedDeliveryBoy", "name phone vehicleType");
-
-    // Emit to seller dashboard
-    req.app.get("io").to("sellerRoom").emit("orderAcceptedByDelivery", {
-      orderId: order._id,
-      deliveryBoy: order.assignedDeliveryBoy,
-      status: order.status,
-    });
-
-    return res.json({
-      success: true,
-      order,
-    });
-  } catch (err) {
-    console.error("Accept order error:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-};
-
-/* =========================
-   REJECT ORDER
-========================= */
-export const rejectOrderByDelivery = async (req, res) => {
-  try {
-    const { orderId } = req.body;
-    const deliveryBoyId = req.deliveryBoy._id;
 
     const order = await Order.findById(orderId);
     if (!order)
       return res.status(404).json({ success: false, message: "Order not found" });
 
-    // Make order available for other delivery boys
-    order.assignedDeliveryBoy = null;
-    order.status = "Order Placed";
+    if (order.assignedDeliveryBoy)
+      return res.status(400).json({ success: false, message: "Already assigned" });
+
+    order.assignedDeliveryBoy = req.deliveryBoy._id;
+    order.status = "Out for delivery";
     await order.save();
 
-    // Notify all delivery boys
-    req.app.get("io").to("deliveryRoom").emit("newDeliveryOrder", order);
+    await saveOrderHistory({
+      orderId: order._id,
+      deliveryBoyId: req.deliveryBoy._id,
+      action: "Accepted Order",
+      status: order.status,
+    });
 
-    res.json({ success: true, message: "Order rejected successfully" });
+    res.json({ success: true, order });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
 /* =========================
-   CANCEL ORDER BY DELIVERY
+   CANCEL ORDER
 ========================= */
 export const cancelOrderByDelivery = async (req, res) => {
   try {
     const { orderId } = req.body;
-    const deliveryBoyId = req.deliveryBoy._id;
 
-    const order = await Order.findById(orderId);
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedDeliveryBoy: req.deliveryBoy._id,
+    });
+
     if (!order)
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
 
     order.assignedDeliveryBoy = null;
     order.status = "Order Placed";
     await order.save();
 
-    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
-      isAvailable: true,
-      $pull: { activeOrders: orderId },
+    await saveOrderHistory({
+      orderId: order._id,
+      deliveryBoyId: req.deliveryBoy._id,
+      action: "Order Cancelled",
+      status: order.status,
     });
 
     res.json({ success: true, message: "Order cancelled successfully" });
@@ -236,258 +200,104 @@ export const cancelOrderByDelivery = async (req, res) => {
 };
 
 /* =========================
-   UPDATE ORDER STATUS
+   SEND PAYMENT OTP
 ========================= */
-export const updateOrderStatusByDelivery = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { status } = req.body;
-
-    const allowedStatuses = [
-      "Order Placed",
-      "Processing",
-      "Packing",
-      "Out for delivery",
-      "Delivered",
-      "Cancelled",
-    ];
-    if (!allowedStatuses.includes(status))
-      return res.status(400).json({ success: false, message: "Invalid status" });
-
-    const order = await Order.findById(orderId).populate(
-      "assignedDeliveryBoy",
-      "name phone vehicleType"
-    );
-    if (!order)
-      return res.status(404).json({ success: false, message: "Order not found" });
-
-    order.status = status;
-    await order.save();
-
-    // Cleanup delivery boy if finished
-    if (["Delivered", "Cancelled"].includes(status) && order.assignedDeliveryBoy) {
-      await DeliveryBoy.findByIdAndUpdate(order.assignedDeliveryBoy._id, {
-        isAvailable: true,
-        $pull: { activeOrders: order._id },
-      });
-    }
-
-    // Emit status update
-    req.app.get("io").to("sellerRoom").emit("orderUpdated", order);
-
-    res.json({ success: true, order });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-/* =========================
-   MARK ORDER AS DELIVERED
-========================= */
-export const markDelivered = async (req, res) => {
-  try {
-    const deliveryBoyId = req.deliveryBoy._id;
-    const { orderId } = req.params;
-
-    const order = await Order.findOne({
-      _id: orderId,
-      assignedDeliveryBoy: deliveryBoyId,
-    });
-    if (!order)
-      return res.status(404).json({
-        success: false,
-        message: "Order not found or not assigned to you",
-      });
-
-    if (order.status === "Delivered")
-      return res.json({ success: false, message: "Order already delivered" });
-
-    order.status = "Delivered";
-    order.isPaid = order.paymentType === "COD" ? false : true;
-    await order.save();
-
-    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
-      $inc: { totalDelivered: 1 },
-      isAvailable: true,
-    });
-
-    // Emit update
-    req.app.get("io").to("sellerRoom").emit("orderDelivered", order);
-
-    res.json({ success: true, message: "Order delivered", order });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-};
-
-
-
-
-// controllers/deliveryController.js
-export const getDeliveryOrders = async (req, res) => {
-  try {
-    const deliveryBoyId = req.deliveryBoy._id;
-
-    const orders = await Order.find({
-      $or: [
-        { assignedDeliveryBoy: deliveryBoyId },
-        { "assignedDeliveryBoy._id": deliveryBoyId }
-      ],
-      status: { $ne: "Cancelled" },
-    })
-      .populate("address")
-      .populate("items.product");
-
-    console.log("Found orders:", orders.length);
-
-    res.json({ orders });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to fetch orders" });
-  }
-};
-
-
-
-export const saveOrderHistory = async ({
-  orderId,
-  deliveryBoyId,
-  action,
-  status,
-  note = "",
-}) => {
-  try {
-    await OrderHistory.create({
-      orderId,
-      deliveryBoy: deliveryBoyId,
-      action,
-      status,
-      note,
-    });
-  } catch (err) {
-    console.error("❌ Order history save failed:", err);
-  }
-};
-
-
 export const sendPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // 1️⃣ Find order and populate user
-    const order = await Order.findById(orderId).populate("user");
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedDeliveryBoy: req.deliveryBoy._id,
+    }).populate("user");
 
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
 
-    if (!order.user || !order.user.email) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer email not found. Ensure 'user' field is populated correctly.",
-      });
-    }
+    if (order.isPaid)
+      return res.status(400).json({ success: false, message: "Order already paid" });
 
-    if (order.isPaid) {
-      return res.status(400).json({ success: false, message: "Order is already paid" });
-    }
-
-    // 2️⃣ Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // 3️⃣ Hash OTP
     const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
 
-    // 4️⃣ Save hashed OTP and expiry in DB
     order.paymentOTP = hashedOTP;
-    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
+    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000;
     await order.save();
 
-    // 5️⃣ Email options
-    const mailOptions = {
+    await transporter.sendMail({
       from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
       to: order.user.email,
       subject: "Payment Confirmation OTP",
       html: `
-        <div style="font-family: sans-serif; text-align: center;">
+        <div style="text-align:center;">
           <h2>Your Payment OTP</h2>
-          <h1 style="color: #2c3e50; font-size: 40px; letter-spacing: 5px;">${otp}</h1>
-          <p>Give this OTP to the delivery boy to confirm your payment.</p>
-          <p style="color: red;">Valid for 5 minutes.</p>
+          <h1>${otp}</h1>
+          <p>Valid for 5 minutes</p>
         </div>
       `,
-    };
-
-    // 6️⃣ Send email
-    await transporter.sendMail(mailOptions);
-
-    // 7️⃣ Response
-    return res.json({ success: true, message: "OTP sent to customer email" });
-
-  } catch (error) {
-    console.error("OTP Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message,
     });
+
+    await saveOrderHistory({
+      orderId: order._id,
+      deliveryBoyId: req.deliveryBoy._id,
+      action: "OTP Sent",
+      status: order.status,
+    });
+
+    res.json({ success: true, message: "OTP sent successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
+/* =========================
+   VERIFY PAYMENT OTP
+========================= */
 export const verifyPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { otp } = req.body;
 
-    // 1. Find the order
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedDeliveryBoy: req.deliveryBoy._id,
+    });
 
-    // 2. Validation checks
-    if (!order.paymentOTP) {
-      return res.status(400).json({ success: false, message: "OTP not generated or already verified" });
-    }
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
 
-    if (order.paymentOTPExpire < Date.now()) {
-      return res.status(400).json({ success: false, message: "OTP has expired. Please resend." });
-    }
+    if (order.isPaid)
+      return res.status(400).json({ success: false, message: "Already paid" });
 
-    // 3. Hash and Compare
-    const hashedOTP = crypto
-      .createHash("sha256")
-      .update(otp.toString()) // Ensure OTP is treated as a string
-      .digest("hex");
+    if (!order.paymentOTP || order.paymentOTPExpire < Date.now())
+      return res.status(400).json({ success: false, message: "OTP expired or not generated" });
 
-    if (hashedOTP !== order.paymentOTP) {
-      return res.status(400).json({ success: false, message: "Invalid OTP. Please try again." });
-    }
+    const hashedOTP = crypto.createHash("sha256").update(otp.toString()).digest("hex");
 
-    // 4. Update Order (Success)
+    if (hashedOTP !== order.paymentOTP)
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+
     order.isPaid = true;
-    order.status = "Delivered"; // Optional: Usually OTP verification happens at delivery
-    
-    // Clear the OTP fields so they can't be reused
+    order.status = "Delivered";
     order.paymentOTP = undefined;
     order.paymentOTPExpire = undefined;
 
     await order.save();
 
-    // 5. Success Response
-    return res.json({ 
-      success: true, 
-      message: "Payment confirmed successfully",
-      order 
+    await DeliveryBoy.findByIdAndUpdate(req.deliveryBoy._id, {
+      $inc: { totalDelivered: 1 },
+      isAvailable: true,
     });
 
-  } catch (error) {
-    console.error("Verification Error:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Internal Server Error", 
-      error: error.message 
+    await saveOrderHistory({
+      orderId: order._id,
+      deliveryBoyId: req.deliveryBoy._id,
+      action: "Payment Verified",
+      status: order.status,
     });
+
+    res.json({ success: true, message: "Payment confirmed & order delivered" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
