@@ -1,5 +1,4 @@
-// server.js
-import "dotenv/config"; // Load .env variables
+import "dotenv/config"; 
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -7,7 +6,6 @@ import http from "http";
 import { Server } from "socket.io";
 
 import connectDB from "./configs/db.js";
-import connectCloudinary from "./configs/cloudinary.js";
 import { setIO } from "./socket.js";
 import { stripeWebhooks } from "./controllers/orderControler.js";
 
@@ -27,17 +25,15 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const server = http.createServer(app);
 
-// =======================
 // CORS Configuration
-// =======================
 const allowedOrigins = [
   "https://kgsuper-client-production.up.railway.app",
-  /\.railway\.app$/ // regex to allow any Railway subdomain
+  /\.railway\.app$/ 
 ];
 
 const corsOptions = {
   origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // allow Postman / mobile apps
+    if (!origin) return callback(null, true); 
     const allowed = allowedOrigins.some(o =>
       o instanceof RegExp ? o.test(origin) : o === origin
     );
@@ -47,14 +43,14 @@ const corsOptions = {
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
 };
 
-// =======================
 // Start Server Function
-// =======================
 const startServer = async () => {
   try {
-    // 1️⃣ Connect to MongoDB & Cloudinary
+    // 1️⃣ Connect to MongoDB
     await connectDB();
-    await connectCloudinary();
+    
+    // Cloudinary is already connected because it was imported as a 
+    // configured object at the top of the file. 
     console.log("✅ Database & Cloudinary connected");
 
     // 2️⃣ Stripe Webhook (must be before JSON parser)
@@ -65,14 +61,13 @@ const startServer = async () => {
     app.use(cookieParser());
     app.use(cors(corsOptions));
 
-    // 4️⃣ Static files
-    app.use("/uploads", express.static("uploads"));
+   
 
-    // 5️⃣ Basic routes
+    // 4️⃣ Basic routes
     app.get("/", (req, res) => res.status(200).send("API is Working ✅"));
-    app.get("/health", (req, res) => res.status(200).send("OK")); // Railway health check
+    app.get("/health", (req, res) => res.status(200).send("OK")); 
 
-    // 6️⃣ API Routes
+    // 5️⃣ API Routes
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
     app.use("/api", sellerRegisterRoutes);
@@ -84,7 +79,7 @@ const startServer = async () => {
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
 
-    // 7️⃣ Socket.IO
+    // 6️⃣ Socket.IO
     const io = new Server(server, {
       cors: {
         origin: (origin, callback) => {
@@ -100,29 +95,16 @@ const startServer = async () => {
     });
     setIO(io);
 
-    // 8️⃣ Start Server
+    // 7️⃣ Start Server
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
 
-    // 9️⃣ Graceful Shutdown (Railway sends SIGTERM)
+    // Graceful Shutdown
     process.on("SIGTERM", () => {
-      console.log("🔹 SIGTERM received. Shutting down gracefully...");
       server.close(() => {
-        console.log("Server closed");
         process.exit(0);
       });
-    });
-
-    // 10️⃣ Handle uncaught exceptions and unhandled rejections
-    process.on("uncaughtException", err => {
-      console.error("❌ Uncaught Exception:", err);
-      process.exit(1);
-    });
-
-    process.on("unhandledRejection", err => {
-      console.error("❌ Unhandled Rejection:", err);
-      process.exit(1);
     });
 
   } catch (err) {
@@ -131,5 +113,4 @@ const startServer = async () => {
   }
 };
 
-// Start the server
 startServer();
