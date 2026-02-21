@@ -1,6 +1,5 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
 import SellerRequestProduct from "../models/sellerRequestProduct.js";
 import connectCloudinary from "../configs/cloudinary.js";
 import nodemailer from "nodemailer";
@@ -15,42 +14,29 @@ const router = express.Router();
 const cloudinary = connectCloudinary();
 
 // ============================
-// Check required env variables
+// Multer Config (MEMORY STORAGE)
 // ============================
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  console.error("❌ EMAIL_USER or EMAIL_PASS missing in .env file");
-}
-
-if (
-  !process.env.CLOUDINARY_CLOUD_NAME ||
-  !process.env.CLOUDINARY_API_KEY ||
-  !process.env.CLOUDINARY_API_SECRET
-) {
-  console.error("❌ Cloudinary env variables missing");
-}
-
-// ============================
-// Multer Config (Disk Storage)
-// ============================
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
+// Using memoryStorage prevents "ENOENT: no such file or directory" on Railway
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit per file
 });
-const upload = multer({ storage });
 
 // ============================
 // Email Transporter
 // ============================
 const createTransporter = () =>
   nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+    service: "gmail", // Using 'service' is more reliable for Gmail on cloud hosts
+    auth: { 
+      user: process.env.EMAIL_USER, 
+      pass: process.env.EMAIL_PASS // Must be a 16-character App Password
+    },
   });
 
 // ============================
-// GET all seller requests
+// GET: Fetch all requests
 // ============================
 router.get("/", async (req, res) => {
   try {
@@ -63,29 +49,29 @@ router.get("/", async (req, res) => {
 });
 
 // ============================
-// CREATE seller request (POST)
+// POST: Create product request
 // ============================
 router.post("/products", upload.array("images", 4), async (req, res) => {
   try {
-    const uploadedImages = [];
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one image is required" });
+    }
 
-    // Use a loop to handle memory buffers
-    for (const file of req.files) {
-      const uploadPromise = new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
+    // Parallel upload to Cloudinary using Streams
+    const uploadPromises = req.files.map((file) => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
           { folder: "seller_requests" },
           (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
+            if (result) resolve({ url: result.secure_url, publicId: result.public_id });
+            else reject(error);
           }
         );
-        // Pipe the buffer to Cloudinary
-        uploadStream.end(file.buffer);
+        stream.end(file.buffer);
       });
+    });
 
-      const result = await uploadPromise;
-      uploadedImages.push({ url: result.secure_url, publicId: result.public_id });
-    }
+    const uploadedImages = await Promise.all(uploadPromises);
 
     const product = new SellerRequestProduct({
       ...req.body,
@@ -94,21 +80,23 @@ router.post("/products", upload.array("images", 4), async (req, res) => {
     });
 
     await product.save();
-    res.json({ success: true, product });
+    res.status(201).json({ success: true, product });
+
   } catch (err) {
-    console.error("POST Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error("❌ POST Error:", err);
+    res.status(500).json({ success: false, message: "Upload failed: " + err.message });
   }
 });
 
 // ============================
-// UPDATE product status + send email
+// PATCH: Update status & Notify Seller
 // ============================
 router.patch("/update-status/:id", async (req, res) => {
   try {
     const { status } = req.body;
-    if (!["approved", "rejected"].includes(status))
+    if (!["approved", "rejected"].includes(status)) {
       return res.status(400).json({ success: false, message: "Invalid status" });
+    }
 
     const product = await SellerRequestProduct.findByIdAndUpdate(
       req.params.id,
@@ -116,9 +104,11 @@ router.patch("/update-status/:id", async (req, res) => {
       { new: true }
     );
 
-    if (!product)
+    if (!product) {
       return res.status(404).json({ success: false, message: "Product not found" });
+    }
 
+    // Attempt to send email but don't crash the whole request if it fails
     let emailSent = false;
     if (product.sellerEmail) {
       try {
@@ -126,12 +116,15 @@ router.patch("/update-status/:id", async (req, res) => {
         await transporter.sendMail({
           from: `"K.G SUPER Marketplace" <${process.env.EMAIL_USER}>`,
           to: product.sellerEmail,
-          subject: `Your Product Has Been ${status.toUpperCase()}`,
+          subject: `Product Update: ${status.toUpperCase()}`,
           html: `
-            <h2>Hello ${product.sellerName || "Seller"},</h2>
-            <p>Your product "<strong>${product.name}</strong>" has been <strong>${status.toUpperCase()}</strong>.</p>
-            <br/>
-            <p>Thank you for using K.G SUPER Marketplace.</p>
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+              <h2 style="color: #059669;">Hello ${product.sellerName},</h2>
+              <p>Your product submission "<strong>${product.name}</strong>" has been <strong>${status.toUpperCase()}</strong> by the administrator.</p>
+              <p>Log in to your portal to see more details.</p>
+              <br/>
+              <p style="font-size: 12px; color: #64748b;">Thank you for choosing K.G SUPER Marketplace.</p>
+            </div>
           `,
         });
         emailSent = true;
@@ -142,12 +135,10 @@ router.patch("/update-status/:id", async (req, res) => {
 
     res.json({
       success: true,
-      message: emailSent
-        ? "Status updated & email sent"
-        : "Status updated but email failed",
-      emailSent,
+      message: emailSent ? "Status updated and seller notified" : "Status updated (Email failed)",
       product,
     });
+
   } catch (err) {
     console.error("Update Status Error:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -155,27 +146,25 @@ router.patch("/update-status/:id", async (req, res) => {
 });
 
 // ============================
-// DELETE product + remove from Cloudinary
+// DELETE: Remove Product & Cloudinary Assets
 // ============================
 router.delete("/:id", async (req, res) => {
   try {
     const product = await SellerRequestProduct.findById(req.params.id);
-    if (!product)
+    if (!product) {
       return res.status(404).json({ success: false, message: "Product not found" });
+    }
 
-    // Delete each image from Cloudinary
-    if (product.images?.length) {
-      for (const img of product.images) {
-        try {
-          await cloudinary.uploader.destroy(img.publicId);
-        } catch (err) {
-          console.warn("Cloudinary delete failed for", img.url);
-        }
-      }
+    // Clean up Cloudinary storage
+    if (product.images && product.images.length > 0) {
+      const deletePromises = product.images.map(img => 
+        cloudinary.uploader.destroy(img.publicId)
+      );
+      await Promise.all(deletePromises);
     }
 
     await SellerRequestProduct.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: "Product deleted successfully" });
+    res.json({ success: true, message: "Product and images deleted" });
   } catch (err) {
     console.error("Delete Error:", err);
     res.status(500).json({ success: false, message: err.message });
