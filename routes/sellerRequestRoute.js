@@ -23,7 +23,7 @@ const upload = multer({
 // ============================
   const createTransporter = () =>
   nodemailer.createTransport({
-    service: "gmail",
+    service: "smtp.gmail.com",
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS, // Verify this is a 16-char App Password
