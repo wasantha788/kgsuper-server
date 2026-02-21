@@ -1,12 +1,10 @@
 // server.js
-import "dotenv/config"; // Automatically loads .env variables
+import "dotenv/config"; // Load .env variables
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
-import fs from "fs";
-import path from "path";
 
 import connectDB from "./configs/db.js";
 import connectCloudinary from "./configs/cloudinary.js";
@@ -23,61 +21,58 @@ import orderRouter from "./routes/orderRoute.js";
 import sellerRequestRoute from "./routes/sellerRequestRoute.js";
 import sellerRegisterRoutes from "./routes/sellerRegisterRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoute.js";
+import analyticsRoutes from "./routes/analyticsRoute.js";
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 8080;
 const server = http.createServer(app);
 
-// Allowed origins for CORS
+// =======================
+// CORS Configuration
+// =======================
 const allowedOrigins = [
   "https://kgsuper-client-production.up.railway.app",
-  /\.railway\.app$/ // Any railway subdomain
+  /\.railway\.app$/ // regex to allow any Railway subdomain
 ];
 
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true); // allow Postman / mobile apps
+    const allowed = allowedOrigins.some(o =>
+      o instanceof RegExp ? o.test(origin) : o === origin
+    );
+    callback(null, allowed);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+};
+
+// =======================
+// Start Server Function
+// =======================
 const startServer = async () => {
   try {
-    console.log("🚀 Starting server...");
+    // 1️⃣ Connect to MongoDB & Cloudinary
+    await connectDB();
+    await connectCloudinary();
+    console.log("✅ Database & Cloudinary connected");
 
-    // 1️⃣ CONNECT TO DATABASE
-    try {
-      await connectDB();
-      console.log("✅ Database connected");
-    } catch (dbErr) {
-      console.error("❌ Database connection failed:", dbErr);
-      process.exit(1);
-    }
-
-    // 2️⃣ CONNECT TO CLOUDINARY
-    try {
-      await connectCloudinary();
-      console.log("✅ Cloudinary connected");
-    } catch (cloudErr) {
-      console.error("❌ Cloudinary connection failed:", cloudErr);
-      process.exit(1);
-    }
-
-    // 3️⃣ STRIPE WEBHOOK (BEFORE express.json)
+    // 2️⃣ Stripe Webhook (must be before JSON parser)
     app.post("/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
 
-    // 4️⃣ MIDDLEWARE
+    // 3️⃣ Middleware
     app.use(express.json());
     app.use(cookieParser());
-    app.use(
-      cors({
-        origin: allowedOrigins,
-        credentials: true,
-        methods: ["GET", "POST", "PUT", "DELETE"],
-      })
-    );
+    app.use(cors(corsOptions));
 
-    // 5️⃣ STATIC FILES
+    // 4️⃣ Static files
     app.use("/uploads", express.static("uploads"));
 
-    // 6️⃣ BASIC ROUTES
+    // 5️⃣ Basic routes
     app.get("/", (req, res) => res.status(200).send("API is Working ✅"));
     app.get("/health", (req, res) => res.status(200).send("OK")); // Railway health check
 
-    // 7️⃣ API ROUTES
+    // 6️⃣ API Routes
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
     app.use("/api", sellerRegisterRoutes);
@@ -87,32 +82,30 @@ const startServer = async () => {
     app.use("/api/address", addressRouter);
     app.use("/api/order", orderRouter);
     app.use("/api/delivery", deliveryRoutes);
+    app.use("/api/analytics", analyticsRoutes);
 
-    // 7️⃣a Optional Analytics Route
-    const analyticsPath = path.resolve("./routes/analyticsRoutes.js");
-    if (fs.existsSync(analyticsPath)) {
-      const { default: analyticsRoutes } = await import("./routes/analyticsRoutes.js");
-      app.use("/api/analytics", analyticsRoutes);
-      console.log("✅ Analytics route loaded");
-    } else {
-      console.warn("⚠️ Analytics route file missing, skipping /api/analytics");
-    }
-
-    // 8️⃣ SOCKET.IO
+    // 7️⃣ Socket.IO
     const io = new Server(server, {
       cors: {
-        origin: allowedOrigins,
+        origin: (origin, callback) => {
+          if (!origin) return callback(null, true);
+          const allowed = allowedOrigins.some(o =>
+            o instanceof RegExp ? o.test(origin) : o === origin
+          );
+          callback(null, allowed);
+        },
         methods: ["GET", "POST"],
+        credentials: true,
       },
     });
     setIO(io);
 
-    // 9️⃣ START SERVER
+    // 8️⃣ Start Server
     server.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
 
-    // 🔹 Graceful shutdown on SIGTERM (Railway signals)
+    // 9️⃣ Graceful Shutdown (Railway sends SIGTERM)
     process.on("SIGTERM", () => {
       console.log("🔹 SIGTERM received. Shutting down gracefully...");
       server.close(() => {
@@ -121,13 +114,13 @@ const startServer = async () => {
       });
     });
 
-    // 🔹 Catch uncaught exceptions & unhandled rejections
-    process.on("uncaughtException", (err) => {
+    // 10️⃣ Handle uncaught exceptions and unhandled rejections
+    process.on("uncaughtException", err => {
       console.error("❌ Uncaught Exception:", err);
       process.exit(1);
     });
 
-    process.on("unhandledRejection", (err) => {
+    process.on("unhandledRejection", err => {
       console.error("❌ Unhandled Rejection:", err);
       process.exit(1);
     });
@@ -138,4 +131,5 @@ const startServer = async () => {
   }
 };
 
+// Start the server
 startServer();
