@@ -38,13 +38,16 @@ export const placeOrderCOD = async (req, res) => {
       chatEnabled: chatEnabled ?? false,
       locationEnabled: locationEnabled ?? false,
     });
+   
+    // ✅ FIX: Clear user cart after successful COD order
+    await User.findByIdAndUpdate(userId, { cartItems: {} });
 
     res.json({ success: true, message: "Order placed successfully", order });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
-
+  
 // ------------------------
 // PLACE ORDER - STRIPE
 // ------------------------
@@ -59,7 +62,7 @@ export const placeOrderStripe = async (req, res) => {
     }
 
     const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const TAX_RATE = 0.02; // 2% tax
+    const TAX_RATE = 0.02;
 
     const productData = [];
     let subtotal = 0;
@@ -113,8 +116,7 @@ export const placeOrderStripe = async (req, res) => {
     res.json({ success: false, message: error.message });
   }
 };
-
-// ------------------------
+     // ------------------------
 // STRIPE WEBHOOK
 // ------------------------
 export const stripeWebhooks = async (req, res) => {
@@ -132,24 +134,22 @@ export const stripeWebhooks = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
 
-  switch (event.type) {
-    case "payment_intent.succeeded": {
-      const paymentIntent = event.data.object;
+  if (event.type === "payment_intent.succeeded") {
+    const paymentIntent = event.data.object;
 
-      const sessions = await stripeInstance.checkout.sessions.list({
-        payment_intent: paymentIntent.id,
-      });
+    const sessions = await stripeInstance.checkout.sessions.list({
+      payment_intent: paymentIntent.id,
+    });
 
-      if (!sessions.data.length) break;
-
+    if (sessions.data.length > 0) {
       const { orderId, userId } = sessions.data[0].metadata;
 
+      // ✅ FIX: Populate 'product' in items so generateInvoice can access item.product.name
       const order = await Order.findByIdAndUpdate(
         orderId,
         { isPaid: true, status: "Order Placed" },
         { new: true }
-      ).populate('items.productId'); // Adjust 'productId' to whatever your ref field is named
-
+      ).populate("items.product"); 
 
       const user = await User.findByIdAndUpdate(
         userId,
@@ -158,33 +158,10 @@ export const stripeWebhooks = async (req, res) => {
       );
 
       if (order && user) {
-        // ✅ Generate PDF
         const invoicePath = await generateInvoice(order, user);
-
-        // ✅ Send Email with PDF
         await sendReceiptEmail(user.email, invoicePath);
       }
-
-      break;
     }
-
-    case "payment_intent.payment_failed": {
-      const paymentIntent = event.data.object;
-
-      const sessions = await stripeInstance.checkout.sessions.list({
-        payment_intent: paymentIntent.id,
-      });
-
-      if (!sessions.data.length) break;
-
-      const orderId = sessions.data[0].metadata.orderId;
-
-      await Order.findByIdAndDelete(orderId);
-      break;
-    }
-
-    default:
-      console.log(`Unhandled event ${event.type}`);
   }
 
   res.json({ received: true });
