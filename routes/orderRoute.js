@@ -17,15 +17,15 @@ import {
 
 
 
-const orderRouter = express.Router();
-
-// 2. Create the transporter (The "Connection" to the email server)
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // or your SMTP server
+  host: "smtp.gmail.com",
+  port: 465, // Use 465 for SSL or 587 for TLS
+  secure: true, // true for 465, false for 587
   auth: {
-    user: process.env.EMAIL_USER, // Your email
-    pass: process.env.EMAIL_PASS, // Your App Password (not your regular password)
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 10000, // Wait 10 seconds before giving up
 });
 
 
