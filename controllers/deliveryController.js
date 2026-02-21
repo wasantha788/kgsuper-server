@@ -17,25 +17,23 @@ const generateToken = (id) =>
     expiresIn: "7d",
   });
 
-  
-/* =========================
-   EMAIL TRANSPORTER
-========================= */
 export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false, // true for 465, false for 587
+  host: process.env.SMTP_HOST,         // e.g., smtp.gmail.com
+  port: Number(process.env.SMTP_PORT), // 587 for STARTTLS, 465 for SSL
+  secure: Number(process.env.SMTP_PORT) === 465, // true for 465, false for 587
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // App Password
+    pass: process.env.EMAIL_PASS, // App Password or SMTP password
   },
   tls: { rejectUnauthorized: false },
-  connectionTimeout: 10_000, // 10 seconds timeout
+  connectionTimeout: 10_000, // 10 seconds
   greetingTimeout: 10_000,
   socketTimeout: 10_000,
 });
 
-// Test connection on startup
+
+
+// Verify connection once on startup
 transporter.verify((error, success) => {
   if (error) {
     console.error("❌ SMTP Connection failed:", error);
@@ -44,6 +42,17 @@ transporter.verify((error, success) => {
   }
 });
 
+// Utility function to send email safely
+export const sendMailSafe = async (options) => {
+  try {
+    const info = await transporter.sendMail(options);
+    console.log("✅ Email sent:", info.messageId);
+    return { success: true, info };
+  } catch (err) {
+    console.error("❌ Email send failed:", err);
+    return { success: false, error: err };
+  }
+};
 /* =========================
    REGISTER DELIVERY BOY
 ========================= */
