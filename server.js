@@ -5,6 +5,8 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
+import fs from "fs";
+import path from "path";
 
 import connectDB from "./configs/db.js";
 import connectCloudinary from "./configs/cloudinary.js";
@@ -21,7 +23,6 @@ import orderRouter from "./routes/orderRoute.js";
 import sellerRequestRoute from "./routes/sellerRequestRoute.js";
 import sellerRegisterRoutes from "./routes/sellerRegisterRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoute.js";
-import analyticsRoutes from "./routes/analyticsRoutes.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -86,7 +87,16 @@ const startServer = async () => {
     app.use("/api/address", addressRouter);
     app.use("/api/order", orderRouter);
     app.use("/api/delivery", deliveryRoutes);
-    app.use("/api/analytics", analyticsRoutes);
+
+    // 7️⃣a Optional Analytics Route
+    const analyticsPath = path.resolve("./routes/analyticsRoutes.js");
+    if (fs.existsSync(analyticsPath)) {
+      const { default: analyticsRoutes } = await import("./routes/analyticsRoutes.js");
+      app.use("/api/analytics", analyticsRoutes);
+      console.log("✅ Analytics route loaded");
+    } else {
+      console.warn("⚠️ Analytics route file missing, skipping /api/analytics");
+    }
 
     // 8️⃣ SOCKET.IO
     const io = new Server(server, {
@@ -102,7 +112,7 @@ const startServer = async () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
 
-    // 1️⃣0️⃣ Graceful shutdown on SIGTERM (Railway signals)
+    // 🔹 Graceful shutdown on SIGTERM (Railway signals)
     process.on("SIGTERM", () => {
       console.log("🔹 SIGTERM received. Shutting down gracefully...");
       server.close(() => {
@@ -111,7 +121,7 @@ const startServer = async () => {
       });
     });
 
-    // 1️⃣1️⃣ Catch uncaught exceptions & unhandled rejections
+    // 🔹 Catch uncaught exceptions & unhandled rejections
     process.on("uncaughtException", (err) => {
       console.error("❌ Uncaught Exception:", err);
       process.exit(1);
