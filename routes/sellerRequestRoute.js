@@ -69,11 +69,21 @@ router.post("/products", upload.array("images", 4), async (req, res) => {
   try {
     const uploadedImages = [];
 
-    // Upload each file to Cloudinary
+    // Use a loop to handle memory buffers
     for (const file of req.files) {
-      const result = await cloudinary.uploader.upload(file.path, {
-        folder: "seller_requests",
+      const uploadPromise = new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "seller_requests" },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        // Pipe the buffer to Cloudinary
+        uploadStream.end(file.buffer);
       });
+
+      const result = await uploadPromise;
       uploadedImages.push({ url: result.secure_url, publicId: result.public_id });
     }
 
