@@ -343,4 +343,51 @@ export const markDelivered = async (req, res) => {
 };
 
 
+/* =========================
+   UPDATE ORDER STATUS
+========================= */
+export const updateOrderStatusByDelivery = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    const allowedStatuses = [
+      "Order Placed",
+      "Processing",
+      "Packing",
+      "Out for delivery",
+      "Delivered",
+      "Cancelled",
+    ];
+    if (!allowedStatuses.includes(status))
+      return res.status(400).json({ success: false, message: "Invalid status" });
+
+    const order = await Order.findById(orderId).populate(
+      "assignedDeliveryBoy",
+      "name phone vehicleType"
+    );
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
+
+    order.status = status;
+    await order.save();
+
+    // Cleanup delivery boy if finished
+    if (["Delivered", "Cancelled"].includes(status) && order.assignedDeliveryBoy) {
+      await DeliveryBoy.findByIdAndUpdate(order.assignedDeliveryBoy._id, {
+        isAvailable: true,
+        $pull: { activeOrders: order._id },
+      });
+    }
+
+    // Emit status update
+    req.app.get("io").to("sellerRoom").emit("orderUpdated", order);
+
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 
