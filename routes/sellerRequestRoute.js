@@ -1,17 +1,12 @@
 import express from "express";
 import multer from "multer";
 import SellerRequestProduct from "../models/sellerRequestProduct.js";
-import connectCloudinary from "../configs/cloudinary.js";
+import cloudinary from "../configs/cloudinary.js";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
 dotenv.config();
 const router = express.Router();
-
-// ============================
-// Initialize Cloudinary
-// ============================
-const cloudinary = connectCloudinary();
 
 // ============================
 // Multer Config (MEMORY STORAGE)
@@ -26,15 +21,17 @@ const upload = multer({
 // ============================
 // Email Transporter
 // ============================
-const createTransporter = () =>
+  const createTransporter = () =>
   nodemailer.createTransport({
-    service: "gmail", // Using 'service' is more reliable for Gmail on cloud hosts
-    auth: { 
-      user: process.env.EMAIL_USER, 
-      pass: process.env.EMAIL_PASS // Must be a 16-character App Password
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS, // Verify this is a 16-char App Password
     },
+    // Adding timeout settings to prevent hanging
+    connectionTimeout: 10000, 
+    greetingTimeout: 10000,
   });
-
 // ============================
 // GET: Fetch all requests
 // ============================
