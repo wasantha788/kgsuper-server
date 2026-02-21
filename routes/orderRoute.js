@@ -15,7 +15,19 @@ import {
   assignDeliveryBoy
 } from "../controllers/orderControler.js";
 
+
+
 const orderRouter = express.Router();
+
+// 2. Create the transporter (The "Connection" to the email server)
+const transporter = nodemailer.createTransport({
+  service: 'gmail', // or your SMTP server
+  auth: {
+    user: process.env.EMAIL_USER, // Your email
+    pass: process.env.EMAIL_PASS, // Your App Password (not your regular password)
+  },
+});
+
 
 
 /* =========================
@@ -73,48 +85,36 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
    EMAIL RECEIPT (Sellers)
 ========================= */
 // Added authSeller so only the store owner can trigger emails
-orderRouter.post('/send-receipt', authSeller, async (req, res) => {
-    const { email, orderDetails } = req.body;
+orderRouter.post("/send-receipt", async (req, res) => {
+  const { email, pdfData, fileName } = req.body;
 
-    if (!email || !orderDetails) {
-        return res.status(400).json({ success: false, message: "Missing email or order data" });
-    }
+  // Validate inputs
+  if (!email || !pdfData) {
+    return res.status(400).json({ success: false, message: "Missing email or PDF data" });
+  }
 
-    const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-        }
-    });
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Your Order Receipt",
+    text: "Please find your attached order receipt.",
+    attachments: [
+      {
+        filename: fileName || 'receipt.pdf',
+        content: pdfData,
+        encoding: 'base64', // Required to handle the string from React
+      },
+    ],
+  };
 
-    const mailOptions = {
-        from: process.env.EMAIL_USER,
-        to: email,
-        subject: `Receipt for Order #${orderDetails._id}`,
-        html: `
-            <div style="font-family: sans-serif; line-height: 1.5;">
-                <h1>Thank you for your order!</h1>
-                <p><strong>Order ID:</strong> ${orderDetails._id}</p>
-                <p><strong>Status:</strong> ${orderDetails.isPaid ? 'Paid' : 'Cash on Delivery'}</p>
-                <p><strong>Total Amount:</strong> ${orderDetails.amount}</p>
-                <h3>Items:</h3>
-                <ul>
-                    ${orderDetails.items?.map(i => `<li>${i.product?.name || 'Product'} (x${i.quantity})</li>`).join('')}
-                </ul>
-            </div>
-        `
-    };
-
-    try {
-        await transporter.sendMail(mailOptions);
-        res.json({ success: true, message: "Email sent successfully!" });
-    } catch (error) {
-        console.error("Email Error:", error);
-        res.status(500).json({ success: false, message: "Email failed to send" });
-    }
+  try {
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: "Email sent successfully!" });
+  } catch (error) {
+    console.error("Email Error:", error);
+    res.status(500).json({ success: false, message: "Failed to send email" });
+  }
 });
-
 /* =========================
    GENERAL (Both User & Seller)
 ========================= */
