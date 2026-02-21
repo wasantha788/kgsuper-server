@@ -301,3 +301,46 @@ export const verifyPaymentOTP = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+/* =========================
+   MARK ORDER AS DELIVERED
+========================= */
+export const markDelivered = async (req, res) => {
+  try {
+    const deliveryBoyId = req.deliveryBoy._id;
+    const { orderId } = req.params;
+
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedDeliveryBoy: deliveryBoyId,
+    });
+    if (!order)
+      return res.status(404).json({
+        success: false,
+        message: "Order not found or not assigned to you",
+      });
+
+    if (order.status === "Delivered")
+      return res.json({ success: false, message: "Order already delivered" });
+
+    order.status = "Delivered";
+    order.isPaid = order.paymentType === "COD" ? false : true;
+    await order.save();
+
+    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
+      $inc: { totalDelivered: 1 },
+      isAvailable: true,
+    });
+
+    // Emit update
+    req.app.get("io").to("sellerRoom").emit("orderDelivered", order);
+
+    res.json({ success: true, message: "Order delivered", order });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
+
