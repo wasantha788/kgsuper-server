@@ -20,13 +20,15 @@ const orderRouter = express.Router();
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465, // Use 465 for SSL or 587 for TLS
-  secure: true, // true for 465, false for 587
+  port: 587,
+  secure: false, // Must be false for port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 10000, // Wait 10 seconds before giving up
+  tls: {
+    rejectUnauthorized: false // Helps if the server has strict SSL rules
+  }
 });
 
 
