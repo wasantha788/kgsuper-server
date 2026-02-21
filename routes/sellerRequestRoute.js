@@ -21,14 +21,16 @@ const upload = multer({
 // ============================
 // Email Transporter
 // ============================
-  const createTransporter = () =>
+    const createTransporter = () =>
   nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true, // true for 465, false for other ports
     auth: {
       user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS, // Verify this is a 16-char App Password
+      pass: process.env.EMAIL_PASS, // Ensure spaces are removed: "zfsayfuvhfnmxtuw"
     },
-    // Adding timeout settings to prevent hanging
+    // Keep these to prevent hanging
     connectionTimeout: 10000, 
     greetingTimeout: 10000,
   });
