@@ -8,10 +8,15 @@ const sellerRequestProductSchema = new mongoose.Schema({
   weight: { type: String, required: true },
   quantity: { type: Number, required: true },
   sellerName: { type: String, required: true },
-  sellerEmail: { type: String, required: true }, // <-- Added email
+  sellerEmail: { type: String, required: true },
   sellerPhone: { type: String, required: true },
   sellerAddress: { type: String, required: true },
-  images: [{ type: String, required: true }],
+  images: [
+    {
+      url: { type: String, required: true },
+      publicId: { type: String, required: true }
+    }
+  ],
   status: { 
     type: String, 
     enum: ["pending", "approved", "rejected"], 
