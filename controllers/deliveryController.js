@@ -20,14 +20,13 @@ const generateToken = (id) =>
  
 // Email transporter setup
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // Let nodemailer handle the host/port/secure logic
+  host: process.env.SMTP_HOST,             // smtp.gmail.com
+  port: Number(process.env.SMTP_PORT),     // 587
+  secure: false,                           // false for TLS/STARTTLS
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Ensure this is the 16-digit App Password
+    pass: process.env.EMAIL_PASS,         // App Password
   },
-  tls: {
-    rejectUnauthorized: false // Helps prevent timeout during TLS handshake
-  }
 });
 
 /* =========================
@@ -370,39 +369,41 @@ export const saveOrderHistory = async ({
   }
 };
 
+
 export const sendPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // 1. Find order and populate user
+    // 1️⃣ Find order and populate user
     const order = await Order.findById(orderId).populate("user");
-    
+
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    // Check if email exists after population
     if (!order.user || !order.user.email) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Customer email not found. Check if 'user' field is populated correctly." 
+      return res.status(400).json({
+        success: false,
+        message: "Customer email not found. Ensure 'user' field is populated correctly.",
       });
     }
 
     if (order.isPaid) {
-      return res.status(400).json({ success: false, message: "Already paid" });
+      return res.status(400).json({ success: false, message: "Order is already paid" });
     }
 
-    // 2. Generate and Hash OTP
+    // 2️⃣ Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 3️⃣ Hash OTP
     const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
 
-    // 3. Save to database
+    // 4️⃣ Save hashed OTP and expiry in DB
     order.paymentOTP = hashedOTP;
-    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 mins
+    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
     await order.save();
 
-    // 4. Send email with error handling
+    // 5️⃣ Email options
     const mailOptions = {
       from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
       to: order.user.email,
@@ -417,21 +418,21 @@ export const sendPaymentOTP = async (req, res) => {
       `,
     };
 
+    // 6️⃣ Send email
     await transporter.sendMail(mailOptions);
 
-    // 5. Final Response
+    // 7️⃣ Response
     return res.json({ success: true, message: "OTP sent to customer email" });
 
   } catch (error) {
     console.error("OTP Error:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Internal Server Error", 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message,
     });
   }
 };
-
 
 
 export const verifyPaymentOTP = async (req, res) => {
