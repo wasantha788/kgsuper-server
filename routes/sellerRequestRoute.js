@@ -18,20 +18,19 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit per file
 });
 
+
+  
 // ============================
 // Email Transporter
 // ============================
-  const createTransporter = () =>
+const createTransporter = () =>
   nodemailer.createTransport({
-    service: "smtp.gmail.com",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS, // Verify this is a 16-char App Password
-    },
-    // Adding timeout settings to prevent hanging
-    connectionTimeout: 10000, 
-    greetingTimeout: 10000,
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: false,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
   });
+
 // ============================
 // GET: Fetch all requests
 // ============================
@@ -84,16 +83,14 @@ router.post("/products", upload.array("images", 4), async (req, res) => {
     res.status(500).json({ success: false, message: "Upload failed: " + err.message });
   }
 });
-
 // ============================
-// PATCH: Update status & Notify Seller
+// UPDATE product status + send email
 // ============================
 router.patch("/update-status/:id", async (req, res) => {
   try {
     const { status } = req.body;
-    if (!["approved", "rejected"].includes(status)) {
+    if (!["approved", "rejected"].includes(status))
       return res.status(400).json({ success: false, message: "Invalid status" });
-    }
 
     const product = await SellerRequestProduct.findByIdAndUpdate(
       req.params.id,
@@ -101,11 +98,9 @@ router.patch("/update-status/:id", async (req, res) => {
       { new: true }
     );
 
-    if (!product) {
+    if (!product)
       return res.status(404).json({ success: false, message: "Product not found" });
-    }
 
-    // Attempt to send email but don't crash the whole request if it fails
     let emailSent = false;
     if (product.sellerEmail) {
       try {
@@ -113,15 +108,12 @@ router.patch("/update-status/:id", async (req, res) => {
         await transporter.sendMail({
           from: `"K.G SUPER Marketplace" <${process.env.EMAIL_USER}>`,
           to: product.sellerEmail,
-          subject: `Product Update: ${status.toUpperCase()}`,
+          subject: `Your Product Has Been ${status.toUpperCase()}`,
           html: `
-            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-              <h2 style="color: #059669;">Hello ${product.sellerName},</h2>
-              <p>Your product submission "<strong>${product.name}</strong>" has been <strong>${status.toUpperCase()}</strong> by the administrator.</p>
-              <p>Log in to your portal to see more details.</p>
-              <br/>
-              <p style="font-size: 12px; color: #64748b;">Thank you for choosing K.G SUPER Marketplace.</p>
-            </div>
+            <h2>Hello ${product.sellerName || "Seller"},</h2>
+            <p>Your product "<strong>${product.name}</strong>" has been <strong>${status.toUpperCase()}</strong>.</p>
+            <br/>
+            <p>Thank you for using K.G SUPER Marketplace.</p>
           `,
         });
         emailSent = true;
@@ -132,15 +124,18 @@ router.patch("/update-status/:id", async (req, res) => {
 
     res.json({
       success: true,
-      message: emailSent ? "Status updated and seller notified" : "Status updated (Email failed)",
+      message: emailSent
+        ? "Status updated & email sent"
+        : "Status updated but email failed",
+      emailSent,
       product,
     });
-
   } catch (err) {
     console.error("Update Status Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // ============================
 // DELETE: Remove Product & Cloudinary Assets
