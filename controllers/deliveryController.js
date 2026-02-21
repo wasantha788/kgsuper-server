@@ -142,31 +142,52 @@ export const getMyOrders = async (req, res) => {
 export const acceptOrder = async (req, res) => {
   try {
     const { orderId } = req.body;
+    const deliveryBoyId = req.deliveryBoy._id;
 
     const order = await Order.findById(orderId);
     if (!order)
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
 
     if (order.assignedDeliveryBoy)
-      return res.status(400).json({ success: false, message: "Already assigned" });
+      return res.status(400).json({
+        success: false,
+        message: "Order already assigned",
+      });
 
-    order.assignedDeliveryBoy = req.deliveryBoy._id;
+    // ✅ Assign first
+    order.assignedDeliveryBoy = deliveryBoyId;
     order.status = "Out for delivery";
     await order.save();
 
-    await saveOrderHistory({
-      orderId: order._id,
-      deliveryBoyId: req.deliveryBoy._id,
-      action: "Accepted Order",
-      status: order.status,
+    // ✅ Populate after save
+    await order.populate("assignedDeliveryBoy", "name phone vehicleType");
+
+    const io = req.app.get("io");
+
+    if (io && order.assignedDeliveryBoy) {
+      io.to("sellerRoom").emit("orderAcceptedByDelivery", {
+        orderId: order._id,
+        deliveryBoy: order.assignedDeliveryBoy, // full object
+        status: order.status,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      order,
     });
 
-    res.json({ success: true, order });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("❌ accept-order error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
-
 /* =========================
    CANCEL ORDER
 ========================= */
