@@ -391,50 +391,53 @@ export const saveOrderHistory = async ({
 export const sendPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
+    const deliveryBoyId = req.deliveryBoy?._id;
 
-    const order = await Order.findOne({
-      _id: orderId,
-      assignedDeliveryBoy: req.deliveryBoy._id,
-    }).populate("user");
+    if (!deliveryBoyId)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const order = await Order.findOne({ _id: orderId, assignedDeliveryBoy: deliveryBoyId }).populate("user");
 
     if (!order)
-      return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
+      return res.status(404).json({ success: false, message: "Order not found or not assigned to you" });
+
+    if (!order.user?.email)
+      return res.status(500).json({ success: false, message: "No user email associated with this order" });
 
     if (order.isPaid)
       return res.status(400).json({ success: false, message: "Order already paid" });
 
+    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
 
     order.paymentOTP = hashedOTP;
-    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000;
+    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
     await order.save();
 
-    await transporter.sendMail({
-      from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
-      to: order.user.email,
-      subject: "Payment Confirmation OTP",
-      html: `
-        <div style="text-align:center;">
-          <h2>Your Payment OTP</h2>
-          <h1>${otp}</h1>
-          <p>Valid for 5 minutes</p>
-        </div>
-      `,
-    });
+    // Send email safely
+    try {
+      await transporter.sendMail({
+        from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
+        to: order.user.email,
+        subject: "Payment OTP",
+        html: `<h2>Your Payment OTP</h2><h1>${otp}</h1><p>Valid for 5 minutes</p>`,
+      });
+    } catch (err) {
+      console.error("❌ Email sending failed:", err);
+      return res.status(500).json({ success: false, message: "Failed to send OTP email" });
+    }
 
-    await saveOrderHistory({
-      orderId: order._id,
-      deliveryBoyId: req.deliveryBoy._id,
-      action: "OTP Sent",
-      status: order.status,
-    });
+    await saveOrderHistory({ orderId: order._id, deliveryBoyId, action: "OTP Sent", status: order.status });
 
     res.json({ success: true, message: "OTP sent successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+
+  } catch (err) {
+    console.error("❌ sendPaymentOTP error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 
 /* =========================
@@ -445,46 +448,39 @@ export const verifyPaymentOTP = async (req, res) => {
     const { orderId } = req.params;
     const { otp } = req.body;
 
-    const order = await Order.findOne({
-      _id: orderId,
-      assignedDeliveryBoy: req.deliveryBoy._id,
-    });
+    if (!otp) return res.status(400).json({ success: false, message: "OTP is required" });
 
-    if (!order)
-      return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
+    const deliveryBoyId = req.deliveryBoy?._id;
+    if (!deliveryBoyId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    if (order.isPaid)
-      return res.status(400).json({ success: false, message: "Already paid" });
+    const order = await Order.findOne({ _id: orderId, assignedDeliveryBoy: deliveryBoyId });
+
+    if (!order) return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
+
+    if (order.isPaid) return res.status(400).json({ success: false, message: "Already paid" });
 
     if (!order.paymentOTP || order.paymentOTPExpire < Date.now())
       return res.status(400).json({ success: false, message: "OTP expired or not generated" });
 
     const hashedOTP = crypto.createHash("sha256").update(otp.toString()).digest("hex");
-
     if (hashedOTP !== order.paymentOTP)
       return res.status(400).json({ success: false, message: "Invalid OTP" });
 
+    // Mark order as paid & delivered
     order.isPaid = true;
     order.status = "Delivered";
     order.paymentOTP = undefined;
     order.paymentOTPExpire = undefined;
-
     await order.save();
 
-    await DeliveryBoy.findByIdAndUpdate(req.deliveryBoy._id, {
-      $inc: { totalDelivered: 1 },
-      isAvailable: true,
-    });
+    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, { $inc: { totalDelivered: 1 }, isAvailable: true });
 
-    await saveOrderHistory({
-      orderId: order._id,
-      deliveryBoyId: req.deliveryBoy._id,
-      action: "Payment Verified",
-      status: order.status,
-    });
+    await saveOrderHistory({ orderId: order._id, deliveryBoyId, action: "Payment Verified", status: order.status });
 
     res.json({ success: true, message: "Payment confirmed & order delivered" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+
+  } catch (err) {
+    console.error("❌ verifyPaymentOTP error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
