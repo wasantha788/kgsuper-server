@@ -148,7 +148,8 @@ export const stripeWebhooks = async (req, res) => {
         orderId,
         { isPaid: true, status: "Processing" },
         { new: true }
-      );
+      ).populate('items.productId'); // Adjust 'productId' to whatever your ref field is named
+
 
       const user = await User.findByIdAndUpdate(
         userId,

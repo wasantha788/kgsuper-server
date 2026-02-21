@@ -29,7 +29,7 @@ export const generateInvoice = (order, user) => {
     });
 
     doc.moveDown();
-    doc.fontSize(14).text(`Total Paid: LKR ${order.amount}`, {
+    doc.fontSize(14).text(`Total Paid: LKR ${Number(order.amount).toFixed(2)}`, {
       align: "right",
     });
 
