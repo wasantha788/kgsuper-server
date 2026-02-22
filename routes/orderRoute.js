@@ -18,7 +18,7 @@ import {
 
 const orderRouter = express.Router();
 
-  const transporter = nodemailer.createTransport({
+ const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true, 
@@ -26,11 +26,9 @@ const orderRouter = express.Router();
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  family: 4, // Forces IPv4 (Gmail often fails on IPv6 in cloud environments)
-  connectionTimeout: 40000, // Wait 20 seconds instead of 10
-  greetingTimeout: 40000,
-  socketTimeout: 40000,
-  pool: true, // Uses a pooled connection to speed up repeated emails
+  // --- ADD THESE TWO LINES ---
+  family: 4,               // 4 = IPv4. This prevents the ETIMEDOUT error.
+  connectionTimeout: 10000 // 10 seconds is plenty if the connection is working
 });
 
 
