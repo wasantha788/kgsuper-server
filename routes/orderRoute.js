@@ -18,19 +18,21 @@ import {
 
 const orderRouter = express.Router();
 
- const transporter = nodemailer.createTransport({
+const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true, 
+  port: 587,      // Switch to 587
+  secure: false,   // Must be false for 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  // --- ADD THESE TWO LINES ---
-  family: 4,               // 4 = IPv4. This prevents the ETIMEDOUT error.
-  connectionTimeout: 10000 // 10 seconds is plenty if the connection is working
+  family: 4,       // Keep this!
+  connectionTimeout: 20000, 
+  greetingTimeout: 20000,
+  tls: {
+    rejectUnauthorized: false // Helps bypass Railway's internal proxy issues
+  }
 });
-
 
 /* =========================
    PLACEMENT (Customers)
