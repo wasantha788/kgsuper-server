@@ -19,19 +19,13 @@ import {
 const orderRouter = express.Router();
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,      // Switch to 587
-  secure: false,   // Must be false for 587
+  host: "smtp-relay.brevo.com",
+  port: 587,
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.BREVO_USER,
+    pass: process.env.BREVO_PASS,
   },
-  family: 4,       // Keep this!
-  connectionTimeout: 20000, 
-  greetingTimeout: 20000,
-  tls: {
-    rejectUnauthorized: false // Helps bypass Railway's internal proxy issues
-  }
 });
 
 /* =========================
