@@ -396,58 +396,73 @@ export const saveOrderHistory = async ({
 
 
 /* =========================
-   SEND PAYMENT OTP
+   SEND PAYMENT OTP (via Brevo REST API)
 ========================= */
 export const sendPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const deliveryBoyId = req.deliveryBoy?._id;
+    const deliveryBoyId = req.deliveryBoy._id;
 
-    if (!deliveryBoyId)
-      return res.status(401).json({ success: false, message: "Unauthorized" });
-
-    const order = await Order.findOne({ _id: orderId, assignedDeliveryBoy: deliveryBoyId }).populate("user");
+    // 1️⃣ Find the order and check assignment
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedDeliveryBoy: deliveryBoyId,
+    }).populate("user");
 
     if (!order)
-      return res.status(404).json({ success: false, message: "Order not found or not assigned to you" });
+      return res.status(404).json({ success: false, message: "Order not found" });
 
-    if (!order.user?.email)
-      return res.status(500).json({ success: false, message: "No user email associated with this order" });
+    const customerEmail = order.user?.email;
+    if (!customerEmail)
+      return res.status(400).json({ success: false, message: "Customer has no email" });
 
-    if (order.isPaid)
-      return res.status(400).json({ success: false, message: "Order already paid" });
-
-    // Generate OTP
+    // 2️⃣ Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
 
-    order.paymentOTP = hashedOTP;
-    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
+    // 3️⃣ Save hashed OTP and expiration
+    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
+    order.paymentOtp = otpHash;
+    order.paymentOtpExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
     await order.save();
 
-    // Send email safely
-    try {
-      await transporter.sendMail({
-        from: `"k.G SUPER🔰" <${process.env.BREVO_USER}>`,
-        to: order.user.email,
-        subject: "Payment OTP",
-        html: `<h2>Your Payment OTP</h2><h1>${otp}</h1><p>Valid for 5 minutes</p>`,
-      });
-    } catch (err) {
-      console.error("❌ Email sending failed:", err);
-      return res.status(500).json({ success: false, message: "Failed to send OTP email" });
+    // 4️⃣ Prepare email payload
+    const emailData = {
+      sender: { name: "KGSUPER🔰", email: process.env.BREVO_USER },
+      to: [{ email: customerEmail }],
+      subject: "Your Payment OTP",
+      htmlContent: `
+        <h2>Payment OTP for your order</h2>
+        <p>Hello ${order.user?.name || ""},</p>
+        <p>Your OTP to complete the payment is:</p>
+        <h1 style="color: #1D4ED8;">${otp}</h1>
+        <p>This OTP is valid for 5 minutes.</p>
+        <p>Thank you for using KGSUPER!</p>
+      `,
+    };
+
+    // 5️⃣ Send email via Brevo REST API
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": process.env.BREVO_PASS, // Brevo API key
+      },
+      body: JSON.stringify(emailData),
+      timeout: 10000, // 10s timeout
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Brevo API Error:", errorText);
+      throw new Error("Failed to send OTP email via Brevo");
     }
 
-    await saveOrderHistory({ orderId: order._id, deliveryBoyId, action: "OTP Sent", status: order.status });
-
     res.json({ success: true, message: "OTP sent successfully" });
-
   } catch (err) {
-    console.error("❌ sendPaymentOTP error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("sendPaymentOTP error:", err);
+    res.status(500).json({ success: false, message: "Failed to send OTP email" });
   }
 };
-
 
 
 /* =========================
