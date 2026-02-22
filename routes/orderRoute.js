@@ -20,17 +20,17 @@ const orderRouter = express.Router();
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,       // Use 465 for better stability on Railway
-  secure: true,    // MUST be true for port 465
+  port: 465,
+  secure: true,
+  logger: true, // Add this to see detailed SMTP logs in Railway
+  debug: true,  // Add this to see detailed SMTP logs in Railway
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Ensure this is the 16-digit App Password
+    pass: process.env.EMAIL_PASS,
   },
-  family: 4,       // Forces IPv4 to prevent Railway timeouts
-  tls: {
-    rejectUnauthorized: false 
-  },
-  connectionTimeout: 10000, // 10 seconds
+  family: 4,
+  tls: { rejectUnauthorized: false },
+  connectionTimeout: 10000,
 });
 
 
