@@ -20,18 +20,18 @@ const orderRouter = express.Router();
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port:  465,
-  secure: true, // Must be false for port 587
+  port: 465,       // Use 465 for better stability on Railway
+  secure: true,    // MUST be true for port 465
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    pass: process.env.EMAIL_PASS, // Ensure this is the 16-digit App Password
   },
+  family: 4,       // Forces IPv4 to prevent Railway timeouts
   tls: {
-    rejectUnauthorized: false // Helps if the server has strict SSL rules
+    rejectUnauthorized: false 
   },
-   family: 4
+  connectionTimeout: 10000, // 10 seconds
 });
-
 
 
 /* =========================
