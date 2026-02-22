@@ -449,7 +449,7 @@ export const sendPaymentOTP = async (req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "api-key": process.env.BREVO_PASS, // Brevo API key
+          "api-key": process.env.BREVO_API_KEY, // Brevo API key
         },
         body: JSON.stringify(emailData),
         signal: controller.signal,
