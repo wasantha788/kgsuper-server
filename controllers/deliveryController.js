@@ -394,16 +394,15 @@ export const saveOrderHistory = async ({
     console.error("❌ Order history save failed:", err);
   }
 };
-
-/* =========================
-   SEND PAYMENT OTP (via Brevo REST API)
+   /* =========================
+   SEND PAYMENT OTP (Fixed using Nodemailer)
 ========================= */
 export const sendPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
     const deliveryBoyId = req.deliveryBoy._id;
 
-    // 1️⃣ Find the order and check assignment
+    // 1. Find the order and check assignment
     const order = await Order.findOne({
       _id: orderId,
       assignedDeliveryBoy: deliveryBoyId,
@@ -416,52 +415,37 @@ export const sendPaymentOTP = async (req, res) => {
     if (!customerEmail)
       return res.status(400).json({ success: false, message: "Customer has no email" });
 
-    // 2️⃣ Generate a 6-digit OTP
+    // 2. Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 3️⃣ Save hashed OTP and expiration
+    // 3. Save hashed OTP and expiration
     const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
     order.paymentOTP = otpHash;
     order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
     await order.save();
 
-    // 4️⃣ Prepare email payload
-    const emailData = {
-      sender: { name: "KGSUPER🔰", email: process.env.BREVO_USER },
-      to: [{ email: customerEmail }],
+    // 4. Send email using your already configured transporter
+    const emailResult = await sendMailSafe({
+      from: { name: "KGSUPER🔰", address: process.env.BREVO_USER },
+      to: customerEmail,
       subject: "Your Payment OTP",
-      htmlContent: `
-        <h2>Payment OTP for your order</h2>
-        <p>Hello ${order.user?.name || ""},</p>
-        <p>Your OTP to complete the payment is:</p>
-        <h1 style="color: #1D4ED8;">${otp}</h1>
-        <p>This OTP is valid for 5 minutes.</p>
-        <p>Thank you for using KGSUPER!</p>
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px;">
+          <h2 style="color: #1D4ED8; text-align: center;">Payment Verification</h2>
+          <p>Hello ${order.user?.name || "Valued Customer"},</p>
+          <p>Your OTP to verify the payment for your order is:</p>
+          <div style="background: #f3f4f6; padding: 15px; text-align: center; border-radius: 8px;">
+            <span style="font-size: 32px; font-weight: bold; color: #111; letter-spacing: 4px;">${otp}</span>
+          </div>
+          <p style="margin-top: 20px; color: #666; font-size: 14px;">This code is valid for 5 minutes. Do not share this OTP with anyone.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+          <p style="text-align: center; font-weight: bold; color: #1D4ED8;">KGSUPER🔰</p>
+        </div>
       `,
-    };
+    });
 
-    // 5️⃣ Send email via Brevo REST API with 10s timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds
-
-    try {
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": process.env.BREVO_API_KEY, // Brevo API key
-        },
-        body: JSON.stringify(emailData),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Brevo API Error:", errorText);
-        throw new Error("Failed to send OTP email via Brevo");
-      }
-    } finally {
-      clearTimeout(timeout);
+    if (!emailResult.success) {
+      throw new Error("Failed to send email via SMTP");
     }
 
     res.json({ success: true, message: "OTP sent successfully" });
@@ -470,7 +454,6 @@ export const sendPaymentOTP = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to send OTP email" });
   }
 };
-
 /* =========================
    VERIFY PAYMENT OTP
 ========================= */
