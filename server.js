@@ -20,6 +20,7 @@ import sellerRequestRoute from "./routes/sellerRequestRoute.js";
 import sellerRegisterRoutes from "./routes/sellerRegisterRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoute.js";
 import analyticsRoutes from "./routes/analyticsRoute.js";
+import chat from "./routes/aiRoute.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -78,6 +79,7 @@ const startServer = async () => {
     app.use("/api/order", orderRouter);
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
+    app.use("/api/ai", chat);
 
     // 6️⃣ Socket.IO
     const io = new Server(server, {
