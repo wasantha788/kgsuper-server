@@ -22,14 +22,17 @@ const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
   secure: true,
-  logger: true, // Add this to see detailed SMTP logs in Railway
-  debug: true,  // Add this to see detailed SMTP logs in Railway
+  // ADD THESE TWO LINES FOR DEBUGGING
+  logger: true,
+  debug: true, 
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  family: 4,
-  tls: { rejectUnauthorized: false },
+  family: 4, 
+  tls: {
+    rejectUnauthorized: false 
+  },
   connectionTimeout: 10000,
 });
 
