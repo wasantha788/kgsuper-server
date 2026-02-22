@@ -22,7 +22,7 @@ import deliveryRoutes from "./routes/deliveryRoute.js";
 import analyticsRoutes from "./routes/analyticsRoute.js";
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
 
 // CORS Configuration

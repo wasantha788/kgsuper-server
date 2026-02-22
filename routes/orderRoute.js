@@ -18,14 +18,21 @@ import {
 
 const orderRouter = express.Router();
 
-const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com",
-  port: 587,
-  secure: false,
+export const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false, // false for port 587
   auth: {
     user: process.env.BREVO_USER,
     pass: process.env.BREVO_PASS,
   },
+  tls: { rejectUnauthorized: false },
+});
+
+// Optional: verify connection
+transporter.verify((err, success) => {
+  if (err) console.log("SMTP Error:", err.response);
+  else console.log("SMTP ready ✅");
 });
 
 /* =========================

@@ -18,19 +18,21 @@ const generateToken = (id) =>
   });
 
  export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST, // smtp-relay.brevo.com
+  host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
-  secure: false, // MUST be false for 587
+  secure: false, // false for port 587
   auth: {
-    user: process.env.BREVO_USER, // your Brevo login email
-    pass: process.env.BREVO_PASS, // your SMTP key
+    user: process.env.BREVO_USER,
+    pass: process.env.BREVO_PASS,
   },
-  family: 4,
-  tls: {
-    rejectUnauthorized: false,
-  },
+  tls: { rejectUnauthorized: false },
 });
 
+// Optional: verify connection
+transporter.verify((err, success) => {
+  if (err) console.log("SMTP Error:", err.response);
+  else console.log("SMTP ready ✅");
+});
 
 // Verify connection once on startup
 transporter.verify((error, success) => {
@@ -426,7 +428,7 @@ export const sendPaymentOTP = async (req, res) => {
     // Send email safely
     try {
       await transporter.sendMail({
-        from: `"k.G SUPER🔰" <${process.env.EMAIL_USER}>`,
+        from: `"k.G SUPER🔰" <${process.env.BREVO_USER}>`,
         to: order.user.email,
         subject: "Payment OTP",
         html: `<h2>Your Payment OTP</h2><h1>${otp}</h1><p>Valid for 5 minutes</p>`,
