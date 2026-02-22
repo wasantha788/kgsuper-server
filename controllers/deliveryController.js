@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import OrderHistory from "../models/OrderHistory.js";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-
+import fetch from "node-fetch";
 
 import dotenv from "dotenv";
 dotenv.config();
