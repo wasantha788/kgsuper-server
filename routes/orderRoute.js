@@ -27,9 +27,9 @@ const orderRouter = express.Router();
     pass: process.env.EMAIL_PASS,
   },
   family: 4, // Forces IPv4 (Gmail often fails on IPv6 in cloud environments)
-  connectionTimeout: 20000, // Wait 20 seconds instead of 10
-  greetingTimeout: 20000,
-  socketTimeout: 20000,
+  connectionTimeout: 40000, // Wait 20 seconds instead of 10
+  greetingTimeout: 40000,
+  socketTimeout: 40000,
   pool: true, // Uses a pooled connection to speed up repeated emails
 });
 
