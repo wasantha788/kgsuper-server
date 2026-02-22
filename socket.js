@@ -113,19 +113,21 @@ export const setIO = (serverIo) => {
     });
 
     // ---------------- ORDER FLOW LOGIC ----------------
-    socket.on("send-to-delivery", async ({ order }) => {
-      if (!order?._id) return;
-      try {
-        const freshOrder = await Order.findById(order._id)
-          .populate("items.product")
-          .populate("address")
-          .populate("assignedDeliveryBoy", "name phone vehicleType");
+    // In socket.js
+socket.on("send-to-delivery", async ({ order }) => {
+  if (!order?._id) return;
+  try {
+    const freshOrder = await Order.findById(order._id)
+      .populate("items.product")
+      .populate("address");
+      // Note: assignedDeliveryBoy is null here, so we don't populate it yet
 
-        io.to("deliveryRoom").emit("newDeliveryOrder", freshOrder);
-      } catch (err) {
-        console.error("❌ send-to-delivery error:", err);
-      }
-    });
+    // This sends the order to all delivery boys currently online
+    io.to("deliveryRoom").emit("newDeliveryOrder", freshOrder);
+  } catch (err) {
+    console.error("❌ send-to-delivery error:", err);
+  }
+});
 
     socket.on("accept-order", async ({ orderId }) => {
       try {
