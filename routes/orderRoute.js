@@ -21,14 +21,15 @@ const orderRouter = express.Router();
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port:  465,
-  secure: false, // Must be false for port 587
+  secure: true, // Must be false for port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
   tls: {
     rejectUnauthorized: false // Helps if the server has strict SSL rules
-  }
+  },
+   family: 4
 });
 
 
@@ -88,7 +89,7 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
    EMAIL RECEIPT (Sellers)
 ========================= */
 // Added authSeller so only the store owner can trigger emails
-orderRouter.post("/send-receipt", async (req, res) => {
+orderRouter.post("/send-receipt", authSeller,async (req, res) => {
   const { email, pdfData, fileName } = req.body;
 
   // Validate inputs
