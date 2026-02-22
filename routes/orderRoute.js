@@ -92,7 +92,7 @@ orderRouter.post("/send-receipt", authSeller,async (req, res) => {
   }
 
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: process.env.BREVO_USER,
     to: email,
     subject: "Your Order Receipt",
     text: "Please find your attached order receipt.",
