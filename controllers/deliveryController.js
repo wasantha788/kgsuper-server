@@ -17,20 +17,23 @@ const generateToken = (id) =>
     expiresIn: "7d",
   });
 
-export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,         // e.g., smtp.gmail.com
-  port: Number(process.env.SMTP_PORT), // 587 for STARTTLS, 465 for SSL
-  secure: Number(process.env.SMTP_PORT) === 587, // true for 465, false for 587
+ export const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT), 
+  // FIX: secure must be FALSE for port 587
+  secure: Number(process.env.SMTP_PORT) === 465, 
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // App Password or SMTP password
+    pass: process.env.EMAIL_PASS,
   },
-  tls: { rejectUnauthorized: false },
-  connectionTimeout: 10_000, // 10 seconds
-  greetingTimeout: 10_000,
-  socketTimeout: 10_000,
+  tls: { 
+    rejectUnauthorized: false,
+    // Add this to help with modern Node versions
+    minVersion: "TLSv1.2" 
+  },
+  connectionTimeout: 10000,
+  family: 4 // Forces IPv4, which is much more stable on Railway
 });
-
 
 
 // Verify connection once on startup
