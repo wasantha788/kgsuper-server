@@ -18,20 +18,17 @@ const generateToken = (id) =>
   });
 
  export const transporter = nodemailer.createTransport({
-  pool: true,
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT), 
-  secure: Number(process.env.SMTP_PORT) === 465, 
+  host: process.env.SMTP_HOST, // smtp-relay.brevo.com
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false, // MUST be false for 587
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.BREVO_USER, // your Brevo login email
+    pass: process.env.BREVO_PASS, // your SMTP key
   },
-  // ADD THIS LINE BELOW
-  family: 4, 
-  tls: { 
-    rejectUnauthorized: false 
+  family: 4,
+  tls: {
+    rejectUnauthorized: false,
   },
-  connectionTimeout: 20000, // Increase to 20 seconds
 });
 
 
