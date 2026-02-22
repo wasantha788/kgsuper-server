@@ -6,6 +6,7 @@ import OrderHistory from "../models/OrderHistory.js";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -394,7 +395,6 @@ export const saveOrderHistory = async ({
   }
 };
 
-
 /* =========================
    SEND PAYMENT OTP (via Brevo REST API)
 ========================= */
@@ -421,8 +421,8 @@ export const sendPaymentOTP = async (req, res) => {
 
     // 3️⃣ Save hashed OTP and expiration
     const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
-    order.paymentOtp = otpHash;
-    order.paymentOtpExpires = Date.now() + 5 * 60 * 1000; // 5 minutes
+    order.paymentOTP = otpHash;
+    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
     await order.save();
 
     // 4️⃣ Prepare email payload
@@ -440,21 +440,28 @@ export const sendPaymentOTP = async (req, res) => {
       `,
     };
 
-    // 5️⃣ Send email via Brevo REST API
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": process.env.BREVO_PASS, // Brevo API key
-      },
-      body: JSON.stringify(emailData),
-      timeout: 10000, // 10s timeout
-    });
+    // 5️⃣ Send email via Brevo REST API with 10s timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10 seconds
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Brevo API Error:", errorText);
-      throw new Error("Failed to send OTP email via Brevo");
+    try {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "api-key": process.env.BREVO_PASS, // Brevo API key
+        },
+        body: JSON.stringify(emailData),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Brevo API Error:", errorText);
+        throw new Error("Failed to send OTP email via Brevo");
+      }
+    } finally {
+      clearTimeout(timeout);
     }
 
     res.json({ success: true, message: "OTP sent successfully" });
@@ -463,7 +470,6 @@ export const sendPaymentOTP = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to send OTP email" });
   }
 };
-
 
 /* =========================
    VERIFY PAYMENT OTP
