@@ -18,21 +18,20 @@ const generateToken = (id) =>
   });
 
  export const transporter = nodemailer.createTransport({
+  pool: true,
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT), 
-  // FIX: secure must be FALSE for port 587
   secure: Number(process.env.SMTP_PORT) === 465, 
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  // ADD THIS LINE BELOW
+  family: 4, 
   tls: { 
-    rejectUnauthorized: false,
-    // Add this to help with modern Node versions
-    minVersion: "TLSv1.2" 
+    rejectUnauthorized: false 
   },
-  connectionTimeout: 10000,
-  family: 4 // Forces IPv4, which is much more stable on Railway
+  connectionTimeout: 20000, // Increase to 20 seconds
 });
 
 
