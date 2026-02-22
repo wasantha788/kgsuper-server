@@ -18,22 +18,19 @@ import {
 
 const orderRouter = express.Router();
 
-const transporter = nodemailer.createTransport({
+  const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
-  secure: true,
-  // ADD THESE TWO LINES FOR DEBUGGING
-  logger: true,
-  debug: true, 
+  secure: true, 
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  family: 4, 
-  tls: {
-    rejectUnauthorized: false 
-  },
-  connectionTimeout: 10000,
+  family: 4, // Forces IPv4 (Gmail often fails on IPv6 in cloud environments)
+  connectionTimeout: 20000, // Wait 20 seconds instead of 10
+  greetingTimeout: 20000,
+  socketTimeout: 20000,
+  pool: true, // Uses a pooled connection to speed up repeated emails
 });
 
 
