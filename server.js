@@ -1,11 +1,15 @@
-import "dotenv/config"; 
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
+import path from "path";
 
 import connectDB from "./configs/db.js";
+import connectCloudinary from "./configs/cloudinary.js";
 import { setIO } from "./socket.js";
 import { stripeWebhooks } from "./controllers/orderControler.js";
 
@@ -23,52 +27,48 @@ import analyticsRoutes from "./routes/analyticsRoute.js";
 import chat from "./routes/aiRoute.js";
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const port = process.env.PORT || 8080;
+
+// IMPORTANT: create HTTP server first
 const server = http.createServer(app);
 
-// CORS Configuration
+// Allowed frontend URLs
 const allowedOrigins = [
   "https://kgsuper-client-production.up.railway.app",
-  /\.railway\.app$/ 
 ];
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); 
-    const allowed = allowedOrigins.some(o =>
-      o instanceof RegExp ? o.test(origin) : o === origin
-    );
-    callback(null, allowed);
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-};
-
-// Start Server Function
-const startServer = async () => {
+(async () => {
   try {
-    // 1️⃣ Connect to MongoDB
+    // 1️⃣ CONNECT DATABASES FIRST
     await connectDB();
-    
-    // Cloudinary is already connected because it was imported as a 
-    // configured object at the top of the file. 
+    await connectCloudinary();
     console.log("✅ Database & Cloudinary connected");
 
-    // 2️⃣ Stripe Webhook (must be before JSON parser)
-    app.post("/stripe", express.raw({ type: "application/json" }), stripeWebhooks);
+    // 2️⃣ STRIPE WEBHOOK (before express.json)
+    app.post(
+      "/stripe",
+      express.raw({ type: "application/json" }),
+      stripeWebhooks
+    );
 
-    // 3️⃣ Middleware
+    // 3️⃣ GLOBAL MIDDLEWARE
     app.use(express.json());
     app.use(cookieParser());
-    app.use(cors(corsOptions));
+    app.use(
+      cors({
+        origin: allowedOrigins,
+        credentials: true,
+      })
+    );
 
-   
+    // 4️⃣ STATIC FILES
+    app.use(
+      "/uploads",
+      express.static(path.join(process.cwd(), "uploads"))
+    );
 
-    // 4️⃣ Basic routes
-    app.get("/", (req, res) => res.status(200).send("API is Working ✅"));
-    app.get("/health", (req, res) => res.status(200).send("OK")); 
-
-    // 5️⃣ API Routes
+    // 5️⃣ ROUTES
+    app.get("/", (req, res) => res.send("API is Working ✅"));
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
     app.use("/api", sellerRegisterRoutes);
@@ -81,38 +81,24 @@ const startServer = async () => {
     app.use("/api/analytics", analyticsRoutes);
     app.use("/api/ai", chat);
 
-    // 6️⃣ Socket.IO
+    // 6️⃣ SOCKET.IO SETUP
     const io = new Server(server, {
       cors: {
-        origin: (origin, callback) => {
-          if (!origin) return callback(null, true);
-          const allowed = allowedOrigins.some(o =>
-            o instanceof RegExp ? o.test(origin) : o === origin
-          );
-          callback(null, allowed);
-        },
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true,
       },
     });
+
     setIO(io);
 
-    // 7️⃣ Start Server
-    server.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    // 7️⃣ START SERVER (Railway requires 0.0.0.0)
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`🚀 Server + Socket.IO running on port ${port}`);
     });
 
-    // Graceful Shutdown
-    process.on("SIGTERM", () => {
-      server.close(() => {
-        process.exit(0);
-      });
-    });
-
-  } catch (err) {
-    console.error("❌ Server failed to start:", err);
+  } catch (error) {
+    console.error("❌ Server failed to start:", error);
     process.exit(1);
   }
-};
-
-startServer();
+})();
