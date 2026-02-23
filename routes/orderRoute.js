@@ -2,7 +2,7 @@ import express from "express";
 import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
-import nodemailer from 'nodemailer';
+import { BrevoClient } from "@getbrevo/brevo";
 import {
   cancelOrderByUser,
   getAllOrders,
@@ -18,21 +18,12 @@ import {
 
 const orderRouter = express.Router();
 
-export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false, // false for port 587
-  auth: {
-    user: process.env.BREVO_USER,
-    pass: process.env.BREVO_PASS,
-  },
-  tls: { rejectUnauthorized: false },
-});
-
-// Optional: verify connection
-transporter.verify((err, success) => {
-  if (err) console.log("SMTP Error:", err.response);
-  else console.log("SMTP ready ✅");
+/* =========================
+   Brevo/Sib API Setup
+========================= */
+// Initialize Brevo client
+const brevo = new BrevoClient({
+  apiKey: process.env.BREVO_API_KEY
 });
 
 /* =========================
@@ -89,34 +80,35 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
 /* =========================
    EMAIL RECEIPT (Sellers)
 ========================= */
-// Added authSeller so only the store owner can trigger emails
-orderRouter.post("/send-receipt", authSeller,async (req, res) => {
+/* =========================
+   EMAIL RECEIPT (Sellers) via Brevo
+========================= */
+orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   const { email, pdfData, fileName } = req.body;
 
-  // Validate inputs
   if (!email || !pdfData) {
     return res.status(400).json({ success: false, message: "Missing email or PDF data" });
   }
 
-  const mailOptions = {
-    from: process.env.BREVO_USER,
-    to: email,
+  const emailData = {
+    sender: { email: process.env.BREVO_USER },
+    to: [{ email }],
     subject: "Your Order Receipt",
-    text: "Please find your attached order receipt.",
-    attachments: [
+    textContent: "Please find your attached order receipt.",
+    attachment: [
       {
-        filename: fileName || 'receipt.pdf',
         content: pdfData,
-        encoding: 'base64', // Required to handle the string from React
+        name: fileName || "receipt.pdf",
+        type: "application/pdf",
       },
     ],
   };
 
   try {
-    await transporter.sendMail(mailOptions);
-    res.json({ success: true, message: "Email sent successfully!" });
+    await brevo.transactionalEmails.sendTransacEmail(emailData);
+    res.json({ success: true, message: "Email sent successfully via Brevo!" });
   } catch (error) {
-    console.error("Email Error:", error);
+    console.error("Brevo Email Error:", error);
     res.status(500).json({ success: false, message: "Failed to send email" });
   }
 });
