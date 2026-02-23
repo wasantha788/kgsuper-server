@@ -27,7 +27,7 @@ import analyticsRoutes from "./routes/analyticsRoute.js";
 import chat from "./routes/aiRoute.js";
 
 const app = express();
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 4000;
 
 // IMPORTANT: create HTTP server first
 const server = http.createServer(app);
@@ -41,6 +41,7 @@ const allowedOrigins = [
   try {
     // 1️⃣ CONNECT DATABASES FIRST
     await connectDB();
+    console.log("✅ Database connected");
     await connectCloudinary();
     console.log("✅ Database & Cloudinary connected");
 
