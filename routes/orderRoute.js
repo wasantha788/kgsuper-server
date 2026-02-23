@@ -94,12 +94,11 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
     sender: { email: process.env.BREVO_USER },
     to: [{ email }],
     subject: "Your Order Receipt",
-    textContent: "Please find your attached order receipt.",
+    htmlContent: "<p>Please find your attached order receipt.</p>",
     attachment: [
       {
-        content: pdfData,
         name: fileName || "receipt.pdf",
-        type: "application/pdf",
+        content: pdfData,
       },
     ],
   };
@@ -108,7 +107,7 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
     await brevo.transactionalEmails.sendTransacEmail(emailData);
     res.json({ success: true, message: "Email sent successfully via Brevo!" });
   } catch (error) {
-    console.error("Brevo Email Error:", error);
+    console.error("Brevo Email Error:", error.response || error);
     res.status(500).json({ success: false, message: "Failed to send email" });
   }
 });
