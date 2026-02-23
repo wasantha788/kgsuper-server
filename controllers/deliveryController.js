@@ -381,36 +381,25 @@ export const sendPaymentOTP = async (req, res) => {
       assignedDeliveryBoy: deliveryBoyId,
     }).populate("user");
 
-    if (!order)
-      return res.status(404).json({ success: false, message: "Order not found" });
-
-    const customerEmail = order.user?.email;
-    if (!customerEmail)
-      return res.status(400).json({ success: false, message: "Customer has no email" });
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!order.user) return res.status(404).json({ success: false, message: "User not found" });
+    if (!order.user.email) return res.status(400).json({ success: false, message: "Customer has no email" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
     const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
+
     order.paymentOTP = otpHash;
     order.paymentOTPExpire = Date.now() + 5 * 60 * 1000;
     await order.save();
 
     await emailApi.sendTransacEmail({
-      sender: {
-        email: process.env.BREVO_USER,
-        name: "KGSUPER🔰",
-      },
-      to: [
-        {
-          email: customerEmail,
-          name: order.user?.name || "Customer",
-        },
-      ],
+      sender: { email: process.env.BREVO_USER, name: "KGSUPER🔰" },
+      to: [{ email: order.user.email, name: order.user.name || "Customer" }],
       subject: "Your Payment OTP",
       htmlContent: `
         <div style="font-family: Arial;">
           <h2>Payment Verification</h2>
-          <p>Hello ${order.user?.name || "Customer"},</p>
+          <p>Hello ${order.user.name || "Customer"},</p>
           <p>Your OTP is:</p>
           <h1>${otp}</h1>
           <p>This code is valid for 5 minutes.</p>
@@ -424,7 +413,6 @@ export const sendPaymentOTP = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to send OTP email" });
   }
 };
-
 /* =========================
    VERIFY PAYMENT OTP
 ========================= */
