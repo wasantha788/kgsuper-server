@@ -4,8 +4,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import OrderHistory from "../models/OrderHistory.js";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
-import fetch from "node-fetch";
+import SibApiV3Sdk from "sib-api-v3-sdk";
+
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -18,43 +18,17 @@ const generateToken = (id) =>
     expiresIn: "7d",
   });
 
- export const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false, // false for port 587
-  auth: {
-    user: process.env.BREVO_USER,
-    pass: process.env.BREVO_PASS,
-  },
-  tls: { rejectUnauthorized: false },
-});
+ 
+  /* =========================
+   BREVO API CONFIG (NO SMTP)
+========================= */
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey =
+  process.env.BREVO_API_KEY;
 
-// Optional: verify connection
-transporter.verify((err, success) => {
-  if (err) console.log("SMTP Error:", err.response);
-  else console.log("SMTP ready ✅");
-});
+const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
-// Verify connection once on startup
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("❌ SMTP Connection failed:", error);
-  } else {
-    console.log("✅ SMTP ready to send emails");
-  }
-});
 
-// Utility function to send email safely
-export const sendMailSafe = async (options) => {
-  try {
-    const info = await transporter.sendMail(options);
-    console.log("✅ Email sent:", info.messageId);
-    return { success: true, info };
-  } catch (err) {
-    console.error("❌ Email send failed:", err);
-    return { success: false, error: err };
-  }
-};
 /* =========================
    REGISTER DELIVERY BOY
 ========================= */
@@ -394,15 +368,14 @@ export const saveOrderHistory = async ({
     console.error("❌ Order history save failed:", err);
   }
 };
-   /* =========================
-   SEND PAYMENT OTP (Fixed using Nodemailer)
+     /* =========================
+   SEND PAYMENT OTP (BREVO API)
 ========================= */
 export const sendPaymentOTP = async (req, res) => {
   try {
     const { orderId } = req.params;
     const deliveryBoyId = req.deliveryBoy._id;
 
-    // 1. Find the order and check assignment
     const order = await Order.findOne({
       _id: orderId,
       assignedDeliveryBoy: deliveryBoyId,
@@ -415,45 +388,43 @@ export const sendPaymentOTP = async (req, res) => {
     if (!customerEmail)
       return res.status(400).json({ success: false, message: "Customer has no email" });
 
-    // 2. Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 3. Save hashed OTP and expiration
     const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
     order.paymentOTP = otpHash;
-    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
+    order.paymentOTPExpire = Date.now() + 5 * 60 * 1000;
     await order.save();
 
-    // 4. Send email using your already configured transporter
-    const emailResult = await sendMailSafe({
-      from: { name: "KGSUPER🔰", address: process.env.BREVO_USER },
-      to: customerEmail,
+    await emailApi.sendTransacEmail({
+      sender: {
+        email: process.env.BREVO_USER,
+        name: "KGSUPER🔰",
+      },
+      to: [
+        {
+          email: customerEmail,
+          name: order.user?.name || "Customer",
+        },
+      ],
       subject: "Your Payment OTP",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e0e0e0; padding: 20px; border-radius: 10px;">
-          <h2 style="color: #1D4ED8; text-align: center;">Payment Verification</h2>
-          <p>Hello ${order.user?.name || "Valued Customer"},</p>
-          <p>Your OTP to verify the payment for your order is:</p>
-          <div style="background: #f3f4f6; padding: 15px; text-align: center; border-radius: 8px;">
-            <span style="font-size: 32px; font-weight: bold; color: #111; letter-spacing: 4px;">${otp}</span>
-          </div>
-          <p style="margin-top: 20px; color: #666; font-size: 14px;">This code is valid for 5 minutes. Do not share this OTP with anyone.</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
-          <p style="text-align: center; font-weight: bold; color: #1D4ED8;">KGSUPER🔰</p>
+      htmlContent: `
+        <div style="font-family: Arial;">
+          <h2>Payment Verification</h2>
+          <p>Hello ${order.user?.name || "Customer"},</p>
+          <p>Your OTP is:</p>
+          <h1>${otp}</h1>
+          <p>This code is valid for 5 minutes.</p>
         </div>
       `,
     });
 
-    if (!emailResult.success) {
-      throw new Error("Failed to send email via SMTP");
-    }
-
     res.json({ success: true, message: "OTP sent successfully" });
   } catch (err) {
-    console.error("sendPaymentOTP error:", err);
+    console.error("❌ sendPaymentOTP error:", err);
     res.status(500).json({ success: false, message: "Failed to send OTP email" });
   }
 };
+
 /* =========================
    VERIFY PAYMENT OTP
 ========================= */
@@ -462,37 +433,44 @@ export const verifyPaymentOTP = async (req, res) => {
     const { orderId } = req.params;
     const { otp } = req.body;
 
-    if (!otp) return res.status(400).json({ success: false, message: "OTP is required" });
-
     const deliveryBoyId = req.deliveryBoy?._id;
-    if (!deliveryBoyId) return res.status(401).json({ success: false, message: "Unauthorized" });
+    if (!deliveryBoyId)
+      return res.status(401).json({ success: false, message: "Unauthorized" });
 
-    const order = await Order.findOne({ _id: orderId, assignedDeliveryBoy: deliveryBoyId });
+    const order = await Order.findOne({
+      _id: orderId,
+      assignedDeliveryBoy: deliveryBoyId,
+    });
 
-    if (!order) return res.status(404).json({ success: false, message: "Order not found or unauthorized" });
-
-    if (order.isPaid) return res.status(400).json({ success: false, message: "Already paid" });
+    if (!order)
+      return res.status(404).json({ success: false, message: "Order not found" });
 
     if (!order.paymentOTP || order.paymentOTPExpire < Date.now())
-      return res.status(400).json({ success: false, message: "OTP expired or not generated" });
+      return res.status(400).json({ success: false, message: "OTP expired" });
 
-    const hashedOTP = crypto.createHash("sha256").update(otp.toString()).digest("hex");
+    const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
     if (hashedOTP !== order.paymentOTP)
       return res.status(400).json({ success: false, message: "Invalid OTP" });
 
-    // Mark order as paid & delivered
     order.isPaid = true;
     order.status = "Delivered";
     order.paymentOTP = undefined;
     order.paymentOTPExpire = undefined;
     await order.save();
 
-    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, { $inc: { totalDelivered: 1 }, isAvailable: true });
+    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
+      $inc: { totalDelivered: 1 },
+      isAvailable: true,
+    });
 
-    await saveOrderHistory({ orderId: order._id, deliveryBoyId, action: "Payment Verified", status: order.status });
+    await OrderHistory.create({
+      orderId: order._id,
+      deliveryBoy: deliveryBoyId,
+      action: "Payment Verified",
+      status: order.status,
+    });
 
-    res.json({ success: true, message: "Payment confirmed & order delivered" });
-
+    res.json({ success: true, message: "Payment confirmed & delivered" });
   } catch (err) {
     console.error("❌ verifyPaymentOTP error:", err);
     res.status(500).json({ success: false, message: "Server error" });
