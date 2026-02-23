@@ -227,6 +227,8 @@ socket.on("send-to-delivery", async ({ order }) => {
       }
     });
 
+
+    
     // ---------------- DISCONNECT ----------------
     socket.on("disconnect", () => {
       console.log("❌ Disconnected:", socket.id);
