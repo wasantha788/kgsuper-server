@@ -23,8 +23,10 @@ export const generateInvoice = (order, user) => {
     doc.text(`Date: ${new Date().toLocaleDateString()}`);
     doc.moveDown();
 
+    doc.text("Order Items:");
+
     order.items.forEach((item) => {
-      const product = item.productId;
+      const product = item.product;
 
       if (product) {
         doc.text(
