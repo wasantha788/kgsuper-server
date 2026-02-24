@@ -86,10 +86,11 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
   /* =========================
    EMAIL RECEIPT (Sellers) via Brevo
 ========================= */
-orderRouter.post("/send-receipt", authSeller, async (req, res) => {
+       orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
     const { email, name, pdfData, fileName } = req.body;
 
+    // Validate input
     if (!email || !pdfData) {
       return res.status(400).json({
         success: false,
@@ -97,15 +98,15 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
       });
     }
 
-    // Clean base64 if it has data prefix
+    // Remove data prefix if exists
     const cleanPdfBase64 = pdfData.replace(/^data:application\/pdf;base64,/, "");
 
-    // Prepare Resend payload
+    // Prepare payload for Resend API
     const payload = {
       from: "kgsupershop@gmail.com", // must be verified in Resend
       to: email,
-      subject: "Your Invoice PDF",
-      html: `<h1>Hello ${name || "Customer"},</h1><p>Here is your invoice.</p>`,
+      subject: "Your Order Invoice",
+      html: `<h1>Hello ${name || "Customer"},</h1><p>Here is your order invoice.</p>`,
       attachments: [
         {
           type: "application/pdf",
@@ -115,7 +116,7 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
       ],
     };
 
-    // Send email via Resend API
+    // Send email via Resend
     const response = await axios.post(
       "https://api.resend.com/emails",
       payload,
@@ -127,23 +128,22 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
       }
     );
 
-    console.log("✅ Email sent successfully via Resend:", response.data);
+    console.log("✅ Email sent via Resend:", response.data);
 
     res.status(200).json({
       success: true,
       message: "Receipt sent successfully",
       result: response.data,
     });
-  } catch (err) {
-    console.error("❌ Error sending receipt via Resend:", err.response?.data || err.message);
+  } catch (error) {
+    console.error("❌ Error sending receipt via Resend:", error.response?.data || error.message);
     res.status(500).json({
       success: false,
       message: "Failed to send receipt",
-      error: err.response?.data || err.message,
+      error: error.response?.data || error.message,
     });
   }
 });
-
 
 /* =========================
    GENERAL (Both User & Seller)
