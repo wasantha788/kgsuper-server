@@ -1,14 +1,13 @@
 import jwt from "jsonwebtoken";
 
 const authSeller = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
   const token =
     req.cookies?.sellerToken ||
-    req.headers.authorization?.split(" ")[1];
+    (authHeader && authHeader.startsWith("Bearer ") && authHeader.split(" ")[1]);
 
   if (!token) {
-    return res
-      .status(401)
-      .json({ success: false, message: "You are not authenticated" });
+    return res.status(401).json({ success: false, message: "You are not authenticated" });
   }
 
   try {
@@ -16,11 +15,10 @@ const authSeller = async (req, res, next) => {
     req.seller = decoded;
     next();
   } catch (err) {
-    return res
-      .status(401)
-      .json({ success: false, message: "Invalid token" });
+    console.error("JWT verification failed:", err.message);
+    const message = err.name === "TokenExpiredError" ? "Token expired" : "Invalid token";
+    return res.status(401).json({ success: false, message });
   }
 };
-
 
 export default authSeller;

@@ -90,8 +90,11 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
     const { email, name, pdfData, fileName } = req.body;
 
-    if (!email || !pdfData)
-      return res.status(400).json({ success: false, message: "Recipient email and PDF data are required" });
+    if (!email || !pdfData) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Recipient email and PDF data are required" });
+    }
 
     // 1️⃣ Prepare Brevo email
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
@@ -101,11 +104,25 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
       htmlContent: "<h1>Here is your invoice</h1><p>See attached PDF.</p>",
       attachment: [
         {
-          content: pdfData, // already base64 from frontend
+          content: pdfData.replace(/\s/g, ""), // remove whitespace/newlines
           name: fileName || "invoice.pdf",
+          type: "application/pdf",
         },
       ],
     });
+
+    // 2️⃣ Send email
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("✅ Email sent successfully:", result);
+
+    res
+      .status(200)
+      .json({ success: true, message: "Receipt sent successfully", result });
+  } catch (err) {
+    console.error("❌ Error sending receipt email:", err);
+    res.status(500).json({ success: false, message: "Failed to send receipt" });
+  }
+});
 
     // 2️⃣ Send email
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
