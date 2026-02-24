@@ -15,9 +15,7 @@ export const generateInvoice = (order, user) => {
     const stream = fs.createWriteStream(invoicePath);
     doc.pipe(stream);
 
-    /* ===============================
-       HEADER
-    =============================== */
+    /* ================= HEADER ================= */
     doc
       .fontSize(26)
       .fillColor("#2E86C1")
@@ -30,12 +28,8 @@ export const generateInvoice = (order, user) => {
 
     doc.moveDown(2);
 
-    /* ===============================
-       CUSTOMER INFO BOX
-    =============================== */
-    doc
-      .rect(50, 130, 500, 80)
-      .stroke();
+    /* ================= CUSTOMER BOX ================= */
+    doc.rect(50, 130, 500, 80).stroke();
 
     doc
       .fontSize(12)
@@ -43,28 +37,21 @@ export const generateInvoice = (order, user) => {
       .text(`Customer Email: ${user.email}`, 60, 160)
       .text(`Date: ${new Date().toLocaleDateString()}`, 60, 180);
 
-    doc.moveDown(5);
-
-    /* ===============================
-       TABLE HEADER
-    =============================== */
+    /* ================= TABLE HEADER ================= */
     const tableTop = 240;
 
     doc
       .fontSize(13)
-      .fillColor("#000")
       .text("Item", 50, tableTop)
-      .text("Qty", 300, tableTop, { width: 50, align: "right" })
-      .text("Price", 360, tableTop, { width: 80, align: "right" })
-      .text("Total", 450, tableTop, { width: 100, align: "right" });
+      .text("Qty", 320, tableTop, { width: 50, align: "right" })
+      .text("Price", 380, tableTop, { width: 80, align: "right" })
+      .text("Total", 470, tableTop, { width: 80, align: "right" });
 
     doc.moveTo(50, tableTop + 15)
        .lineTo(550, tableTop + 15)
        .stroke();
 
-    /* ===============================
-       TABLE CONTENT
-    =============================== */
+    /* ================= TABLE CONTENT ================= */
     let position = tableTop + 25;
     let subtotal = 0;
 
@@ -72,39 +59,38 @@ export const generateInvoice = (order, user) => {
       const product = item.product;
       if (!product) return;
 
-      const itemTotal = product.price * item.quantity;
+      const price = Number(product.price);
+      const qty = Number(item.quantity);
+      const itemTotal = price * qty;
       subtotal += itemTotal;
 
+      // Wrap long product names properly
       doc
         .fontSize(11)
-        .text(product.name, 50, position)
-        .text(item.quantity, 300, position, { width: 50, align: "right" })
-        .text(`LKR ${product.price.toFixed(2)}`, 360, position, { width: 80, align: "right" })
-        .text(`LKR ${itemTotal.toFixed(2)}`, 450, position, { width: 100, align: "right" });
+        .text(product.name, 50, position, { width: 250 }) // limit width to avoid overlap
+        .text(qty, 320, position, { width: 50, align: "right" })
+        .text(`LKR ${price.toFixed(2)}`, 380, position, { width: 80, align: "right" })
+        .text(`LKR ${itemTotal.toFixed(2)}`, 470, position, { width: 80, align: "right" });
 
-      position += 20;
+      position += 25;
     });
 
-    /* ===============================
-       TOTAL SECTION
-    =============================== */
+    /* ================= TOTAL SECTION ================= */
     doc.moveTo(300, position + 10)
        .lineTo(550, position + 10)
        .stroke();
 
     doc
-      .fontSize(14)
+      .fontSize(15)
       .fillColor("#27AE60")
       .text(
-        `TOTAL PAID: LKR ${Number(order.amount).toFixed(2)}`,
+        `TOTAL PAID: LKR ${subtotal.toFixed(2)}`,
         300,
         position + 20,
         { align: "right" }
       );
 
-    /* ===============================
-       FOOTER
-    =============================== */
+    /* ================= FOOTER ================= */
     doc.moveDown(4);
     doc
       .fontSize(12)
@@ -115,7 +101,7 @@ export const generateInvoice = (order, user) => {
 
     doc
       .fontSize(10)
-      .text("We appreciate your business ❤️", {
+      .text("We appreciate your business.", {
         align: "center",
       });
 
