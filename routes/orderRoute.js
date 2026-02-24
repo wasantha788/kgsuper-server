@@ -83,34 +83,31 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
   }
 });
 
-
-/* =========================
-   EMAIL RECEIPT (Sellers) via Brevo
-========================= */
+// =========================
+// EMAIL RECEIPT (Sellers) via Brevo
+// =========================
 orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
-    const { orderId, recipientEmail, recipientName } = req.body;
+    const { email, name, pdfData, fileName } = req.body;
 
-    if (!orderId || !recipientEmail)
-      return res.status(400).json({ success: false, message: "Order ID and recipient email are required" });
+    if (!email || !pdfData)
+      return res.status(400).json({ success: false, message: "Recipient email and PDF data are required" });
 
-    // Optional: generate PDF dynamically instead of static file
-    const pdfData = fs.readFileSync("./invoice.pdf"); // path to your PDF
-    const pdfBase64 = pdfData.toString("base64");
-
+    // 1️⃣ Prepare Brevo email
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-      to: [{ email: recipientEmail, name: recipientName || "Customer" }],
-      sender: { email: "kgsupershop@gmail.com", name: "kg super" },
+      to: [{ email, name: name || "Customer" }],
+      sender: { email: "kgsupershop@gmail.com", name: "KG Super" },
       subject: "Your Invoice PDF",
       htmlContent: "<h1>Here is your invoice</h1><p>See attached PDF.</p>",
       attachment: [
         {
-          content: pdfBase64,
-          name: "invoice.pdf",
+          content: pdfData, // already base64 from frontend
+          name: fileName || "invoice.pdf",
         },
       ],
     });
 
+    // 2️⃣ Send email
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
     console.log("✅ Email sent successfully:", result);
 
