@@ -124,16 +124,6 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   }
 });
 
-    // 2️⃣ Send email
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log("✅ Email sent successfully:", result);
-
-    res.status(200).json({ success: true, message: "Receipt sent successfully", result });
-  } catch (err) {
-    console.error("❌ Error sending receipt email:", err);
-    res.status(500).json({ success: false, message: "Failed to send receipt" });
-  }
-});
 /* =========================
    GENERAL (Both User & Seller)
 ========================= */
