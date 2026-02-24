@@ -2,7 +2,8 @@ import express from "express";
 import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
-import { BrevoClient } from "@getbrevo/brevo";
+import SibApiV3Sdk from "sib-api-v3-sdk";
+import fs from "fs";
 import {
   cancelOrderByUser,
   getAllOrders,
@@ -14,6 +15,8 @@ import {
   deleteOrder,
   assignDeliveryBoy
 } from "../controllers/orderControler.js";
+import dotenv from "dotenv";
+dotenv.config();
 
 
 const orderRouter = express.Router();
@@ -22,10 +25,13 @@ const orderRouter = express.Router();
    Brevo/Sib API Setup
 ========================= */
 // Initialize Brevo client
-const brevo = new BrevoClient({
-  apiKey: process.env.BREVO_API_KEY
-});
 
+// 1️⃣ Configure API client
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+const apiKey = defaultClient.authentications["api-key"];
+apiKey.apiKey = process.env.BREVO_API_KEY; // Your API key
+
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 /* =========================
    PLACEMENT (Customers)
 ========================= */
@@ -77,38 +83,41 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
   }
 });
 
-/* =========================
-   EMAIL RECEIPT (Sellers)
-========================= */
+
 /* =========================
    EMAIL RECEIPT (Sellers) via Brevo
 ========================= */
 orderRouter.post("/send-receipt", authSeller, async (req, res) => {
-  const { email, pdfData, fileName } = req.body;
-
-  if (!email || !pdfData) {
-    return res.status(400).json({ success: false, message: "Missing email or PDF data" });
-  }
-
-  const emailData = {
-    sender: { email: process.env.BREVO_USER },
-    to: [{ email }],
-    subject: "Your Order Receipt",
-    htmlContent: "<p>Please find your attached order receipt.</p>",
-    attachment: [
-      {
-        name: fileName || "receipt.pdf",
-        content: pdfData,
-      },
-    ],
-  };
-
   try {
-    await brevo.transactionalEmails.sendTransacEmail(emailData);
-    res.json({ success: true, message: "Email sent successfully via Brevo!" });
-  } catch (error) {
-    console.error("Brevo Email Error:", error.response || error);
-    res.status(500).json({ success: false, message: "Failed to send email" });
+    const { orderId, recipientEmail, recipientName } = req.body;
+
+    if (!orderId || !recipientEmail)
+      return res.status(400).json({ success: false, message: "Order ID and recipient email are required" });
+
+    // Optional: generate PDF dynamically instead of static file
+    const pdfData = fs.readFileSync("./invoice.pdf"); // path to your PDF
+    const pdfBase64 = pdfData.toString("base64");
+
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
+      to: [{ email: recipientEmail, name: recipientName || "Customer" }],
+      sender: { email: "sender@example.com", name: "Your Company" },
+      subject: "Your Invoice PDF",
+      htmlContent: "<h1>Here is your invoice</h1><p>See attached PDF.</p>",
+      attachment: [
+        {
+          content: pdfBase64,
+          name: "invoice.pdf",
+        },
+      ],
+    });
+
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("✅ Email sent successfully:", result);
+
+    res.status(200).json({ success: true, message: "Receipt sent successfully", result });
+  } catch (err) {
+    console.error("❌ Error sending receipt email:", err);
+    res.status(500).json({ success: false, message: "Failed to send receipt" });
   }
 });
 /* =========================
