@@ -83,44 +83,65 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
   }
 });
 
-// =========================
-// EMAIL RECEIPT (Sellers) via Brevo
-// =========================
+  /* =========================
+   EMAIL RECEIPT (Sellers) via Brevo
+========================= */
 orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
     const { email, name, pdfData, fileName } = req.body;
 
+    // 1️⃣ Validate input
     if (!email || !pdfData) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Recipient email and PDF data are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Recipient email and PDF data are required",
+      });
     }
 
-    // 1️⃣ Prepare Brevo email
+    // 2️⃣ Ensure PDF is proper Base64
+    // If you generate via jsPDF, pdfData should already be base64 without prefix
+    const cleanPdfBase64 = pdfData.replace(/^data:application\/pdf;base64,/, "");
+
+    // 3️⃣ Verified sender (must be verified in Brevo)
+    const senderEmail = "verified_email@yourdomain.com"; // 🔹 Replace with your verified Brevo email
+    const senderName = "KG Super";
+
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
       to: [{ email, name: name || "Customer" }],
-      sender: { email: "kgsupershop@gmail.com", name: "KG Super" },
+      sender: { email: senderEmail, name: senderName },
       subject: "Your Invoice PDF",
-      htmlContent: "<h1>Here is your invoice</h1><p>See attached PDF.</p>",
+      htmlContent: `
+        <h1>Invoice</h1>
+        <p>Dear ${name || "Customer"},</p>
+        <p>Thank you for your order. Please find your invoice attached.</p>
+      `,
       attachment: [
         {
-          content: pdfData.replace(/\s/g, ""), // remove whitespace/newlines
-          name: fileName || "invoice.pdf",
+          content: cleanPdfBase64,
+          name: fileName || `invoice.pdf`,
           type: "application/pdf",
         },
       ],
     });
 
-    // 2️⃣ Send email
+    // 4️⃣ Send email via Brevo SDK
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+
     console.log("✅ Email sent successfully:", result);
 
-    res
-      .status(200)
-      .json({ success: true, message: "Receipt sent successfully", result });
+    res.status(200).json({
+      success: true,
+      message: "Receipt sent successfully",
+      result,
+    });
   } catch (err) {
     console.error("❌ Error sending receipt email:", err);
-    res.status(500).json({ success: false, message: "Failed to send receipt" });
+
+    // Send more detailed error if available
+    const errorMessage =
+      err.response?.body?.message || err.message || "Failed to send receipt";
+
+    res.status(500).json({ success: false, message: errorMessage });
   }
 });
 
