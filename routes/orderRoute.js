@@ -77,7 +77,7 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
     }
 
     // 1. Fetch data from Database
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId).populate("items.productId");
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
     // Use order.userId or order.user depending on your Schema

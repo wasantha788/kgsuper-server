@@ -23,9 +23,14 @@ export const generateInvoice = (order, user) => {
     doc.text(`Date: ${new Date().toLocaleDateString()}`);
     doc.moveDown();
 
-    doc.text("Order Items:");
     order.items.forEach((item) => {
-      doc.text(`${item.name} - ${item.quantity} x LKR ${item.price}`);
+      const product = item.productId;
+
+      if (product) {
+        doc.text(
+          `${product.name} - ${item.quantity} x LKR ${product.price}`
+        );
+      }
     });
 
     doc.moveDown();
