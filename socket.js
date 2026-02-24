@@ -129,44 +129,45 @@ socket.on("send-to-delivery", async ({ order }) => {
   }
 });
 
-    socket.on("accept-order", async ({ orderId }) => {
-      try {
-        const deliveryBoyId = socket.deliveryBoyId;
-        if (!deliveryBoyId) return;
+   // --- Inside socket.on("accept-order") in your backend ---
+socket.on("accept-order", async ({ orderId }) => {
+  try {
+    const deliveryBoyId = socket.deliveryBoyId;
+    if (!deliveryBoyId) return;
 
-        const order = await Order.findOneAndUpdate(
-          { _id: orderId, assignedDeliveryBoy: null },
-          { assignedDeliveryBoy: deliveryBoyId, status: "Out for delivery" },
-          { new: true }
-        )
-          .populate("items.product")
-          .populate("address")
-          .populate("assignedDeliveryBoy", "name phone vehicleType");
+    const order = await Order.findOneAndUpdate(
+      { _id: orderId, assignedDeliveryBoy: null },
+      { assignedDeliveryBoy: deliveryBoyId, status: "Out for delivery" },
+      { new: true }
+    )
+    .populate("items.product")
+    .populate("address")
+    .populate("assignedDeliveryBoy", "name phone vehicleType");
 
-        if (!order) {
-          return socket.emit("orderRejectedNotification", {
-            message: "Order already taken!",
-          });
-        }
+    if (!order) {
+      return socket.emit("orderRejectedNotification", { message: "Order already taken!" });
+    }
 
-        socket.emit("orderUpdated", order);
-        socket.to("deliveryRoom").emit("orderRemoved", { orderId });
+    // 1. Tell the accepting driver to move this to 'Active'
+    socket.emit("orderUpdated", order);
 
-        io.to("sellerRoom").emit("orderAcceptedByDelivery", {
-          orderId: order._id,
-          status: order.status,
-          deliveryBoy: {
-            name: order.assignedDeliveryBoy.name,
-            phone: order.assignedDeliveryBoy.phone,
-            vehicle: order.assignedDeliveryBoy.vehicleType,
-          },
-        });
-      } catch (err) {
-        console.error("❌ accept-order error:", err);
-      }
+    // 2. Tell ALL other drivers to remove this order from their 'New Opportunities' feed
+    socket.to("deliveryRoom").emit("orderRemoved", { orderId });
+
+    // 3. Notify the Seller
+    io.to("sellerRoom").emit("orderAcceptedByDelivery", {
+      orderId: order._id,
+      status: order.status,
+      deliveryBoy: {
+        name: order.assignedDeliveryBoy.name,
+        phone: order.assignedDeliveryBoy.phone,
+        vehicle: order.assignedDeliveryBoy.vehicleType,
+      },
     });
-
-    
+  } catch (err) {
+    console.error("❌ accept-order error:", err);
+  }
+});
 
 
 
