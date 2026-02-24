@@ -2,6 +2,7 @@ import express from "express";
 import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
+import User from "../models/user.js";
 import { generateInvoice } from "../utils/generateInvoice.js";
 import { sendReceiptEmail } from "../utils/sendReceipt.js";
 
