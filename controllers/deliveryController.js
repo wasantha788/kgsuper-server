@@ -424,7 +424,6 @@ export const sendPaymentOTP = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to send OTP email" });
   }
 };
-
 /* =========================
    VERIFY PAYMENT OTP
 ========================= */
@@ -452,25 +451,38 @@ export const verifyPaymentOTP = async (req, res) => {
     if (hashedOTP !== order.paymentOTP)
       return res.status(400).json({ success: false, message: "Invalid OTP" });
 
+    // Mark payment as paid
     order.isPaid = true;
     order.status = "Delivered";
     order.paymentOTP = undefined;
     order.paymentOTPExpire = undefined;
     await order.save();
 
-    await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
-      $inc: { totalDelivered: 1 },
-      isAvailable: true,
-    });
+    // Secondary updates (failures here won't break the main success response)
+    try {
+      await DeliveryBoy.findByIdAndUpdate(deliveryBoyId, {
+        $inc: { totalDelivered: 1 },
+        isAvailable: true,
+      });
 
-    await OrderHistory.create({
+      await OrderHistory.create({
+        orderId: order._id,
+        deliveryBoy: deliveryBoyId,
+        action: "Delivered",
+        status: order.status,
+      });
+    } catch (secondaryError) {
+      console.error("Secondary update error:", secondaryError);
+    }
+
+    // Always return success if payment is verified
+    return res.status(200).json({
+      success: true,
+      message: "Payment confirmed & delivered",
       orderId: order._id,
-      deliveryBoy: deliveryBoyId,
-      action: "Delivered",
       status: order.status,
     });
 
-    res.json({ success: true, message: "Payment confirmed & delivered" });
   } catch (err) {
     console.error("❌ verifyPaymentOTP error:", err);
     res.status(500).json({ success: false, message: "Server error" });
