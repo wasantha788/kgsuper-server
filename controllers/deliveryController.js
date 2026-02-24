@@ -162,7 +162,7 @@ export const acceptOrder = async (req, res) => {
     await order.populate("assignedDeliveryBoy", "name phone vehicleType");
 
     // Emit to seller dashboard
-    req.app.get("io").to("sellerRoom").emit("orderAcceptedByDelivery", {
+    req.app.get("io").to("sellerRoom").emit("orderUpdated", {
       orderId: order._id,
       deliveryBoy: order.assignedDeliveryBoy,
       status: order.status,
@@ -238,7 +238,7 @@ export const cancelOrderByDelivery = async (req, res) => {
 /* =========================
    UPDATE ORDER STATUS
 ========================= */
-export const updateOrderStatusByDelivery = async (req, res) => {
+export const orderUpdated = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status } = req.body;
