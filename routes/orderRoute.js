@@ -103,7 +103,7 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
     const cleanPdfBase64 = pdfData.replace(/^data:application\/pdf;base64,/, "");
 
     // 3️⃣ Verified sender (must be verified in Brevo)
-    const senderEmail = "verified_email@yourdomain.com"; // 🔹 Replace with your verified Brevo email
+    const senderEmail = "kgsupershop@gmail.com"; // 🔹 Replace with your verified Brevo email
     const senderName = "KG Super";
 
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
