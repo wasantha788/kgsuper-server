@@ -2,7 +2,7 @@ import express from "express";
 import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
-import SibApiV3Sdk from "sib-api-v3-sdk";
+import { Resend } from 'resend';
 
 import {
   cancelOrderByUser,
@@ -27,9 +27,7 @@ const orderRouter = express.Router();
 // Initialize Brevo client
 
 // 1️⃣ Configure API client
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications["api-key"];
-apiKey.apiKey = process.env.BREVO_API_KEY; // Your API key
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 /* =========================
@@ -85,7 +83,7 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
 
 
 /* =========================
-   EMAIL RECEIPT (Sellers) via Brevo/Sib API
+   EMAIL RECEIPT (Sellers) via Resend
 ========================= */
 orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
@@ -98,49 +96,44 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
       });
     }
 
-    // Remove data prefix if exists
+    // Resend expects the base64 string without the "data:application/pdf;base64," prefix
     const cleanPdfBase64 = pdfData.replace(/^data:application\/pdf;base64,/, "");
 
-    // Create instance of SMTP transactional email API
-    const apiInstance = new SibApiV3Sdk.SMTPApi();
-
-    // Prepare the email
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-      to: [{ email, name: name || "Customer" }],
-      sender: { email: "kgsupershop@gmail.com", name: "KG Super Shop" }, // Must be verified in Brevo
-      subject: "Your Order Invoice",
-      htmlContent: `<h1>Hello ${name || "Customer"},</h1><p>Here is your order invoice.</p>`,
-      attachment: [
+    // Send the email using Resend SDK
+    const { data, error } = await resend.emails.send({
+      from: 'kgsupershop@gmail.com', // Use your verified domain once set up
+      to: [email],
+      subject: 'Your Order Invoice',
+      html: `<h1>Hello ${name || "Customer"},</h1><p>Thank you for your order! Please find your invoice attached.</p>`,
+      attachments: [
         {
-          content: cleanPdfBase64, // Base64 PDF
-          name: fileName || "invoice.pdf",
+          filename: fileName || 'invoice.pdf',
+          content: cleanPdfBase64,
         },
       ],
     });
 
-    // Send the email
-    const response = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    if (error) {
+      throw error;
+    }
 
-    console.log("✅ Email sent via Brevo:", response);
+    console.log("✅ Email sent via Resend:", data.id);
 
     res.status(200).json({
       success: true,
-      message: "Receipt sent successfully via Brevo",
-      result: response,
+      message: "Receipt sent successfully via Resend",
+      id: data.id,
     });
+    
   } catch (error) {
-    console.error(
-      "❌ Error sending receipt via Brevo:",
-      error.response?.body || error.message
-    );
+    console.error("❌ Error sending receipt via Resend:", error);
     res.status(500).json({
       success: false,
       message: "Failed to send receipt",
-      error: error.response?.body || error.message,
+      error: error.message,
     });
   }
 });
-
 /* =========================
    GENERAL (Both User & Seller)
 ========================= */
