@@ -3,7 +3,7 @@ import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
 import { generateInvoice } from "../utils/generateInvoice.js";
-import { sendReceiptEmail } from "../utils/sendReceipt";
+import { sendReceiptEmail } from "../utils/sendReceipt.js";
 
 import {
   cancelOrderByUser,
@@ -21,14 +21,6 @@ dotenv.config();
 
 
 const orderRouter = express.Router();
-
-/* =========================
-   Brevo/Sib API Setup
-========================= */
-// Initialize Brevo client
-
-// 1️⃣ Configure API client
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 /* =========================
