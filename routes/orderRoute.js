@@ -100,7 +100,7 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
 
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
       to: [{ email: recipientEmail, name: recipientName || "Customer" }],
-      sender: { email: "sender@example.com", name: "Your Company" },
+      sender: { email: "kgsupershop@gmail.com", name: "kg super" },
       subject: "Your Invoice PDF",
       htmlContent: "<h1>Here is your invoice</h1><p>See attached PDF.</p>",
       attachment: [
