@@ -466,7 +466,7 @@ export const verifyPaymentOTP = async (req, res) => {
     await OrderHistory.create({
       orderId: order._id,
       deliveryBoy: deliveryBoyId,
-      action: "Payment Verified",
+      action: "Delivered",
       status: order.status,
     });
 
