@@ -3,7 +3,7 @@ import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
 import SibApiV3Sdk from "sib-api-v3-sdk";
-import fs from "fs";
+
 import {
   cancelOrderByUser,
   getAllOrders,
@@ -31,7 +31,7 @@ const defaultClient = SibApiV3Sdk.ApiClient.instance;
 const apiKey = defaultClient.authentications["api-key"];
 apiKey.apiKey = process.env.BREVO_API_KEY; // Your API key
 
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
 /* =========================
    PLACEMENT (Customers)
 ========================= */
@@ -90,7 +90,6 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
     const { email, name, pdfData, fileName } = req.body;
 
-    // 1️⃣ Validate input
     if (!email || !pdfData) {
       return res.status(400).json({
         success: false,
@@ -98,52 +97,53 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
       });
     }
 
-    // 2️⃣ Ensure PDF is proper Base64
-    // If you generate via jsPDF, pdfData should already be base64 without prefix
+    // Clean base64 if it has data prefix
     const cleanPdfBase64 = pdfData.replace(/^data:application\/pdf;base64,/, "");
 
-    // 3️⃣ Verified sender (must be verified in Brevo)
-    const senderEmail = "kgsupershop@gmail.com"; // 🔹 Replace with your verified Brevo email
-    const senderName = "KG Super";
-
-    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-      to: [{ email, name: name || "Customer" }],
-      sender: { email: senderEmail, name: senderName },
+    // Prepare Resend payload
+    const payload = {
+      from: "kgsupershop@gmail.com", // must be verified in Resend
+      to: email,
       subject: "Your Invoice PDF",
-      htmlContent: `
-        <h1>Invoice</h1>
-        <p>Dear ${name || "Customer"},</p>
-        <p>Thank you for your order. Please find your invoice attached.</p>
-      `,
-      attachment: [
+      html: `<h1>Hello ${name || "Customer"},</h1><p>Here is your invoice.</p>`,
+      attachments: [
         {
-          content: cleanPdfBase64,
-          name: fileName || `invoice.pdf`,
           type: "application/pdf",
+          name: fileName || "invoice.pdf",
+          data: cleanPdfBase64,
         },
       ],
-    });
+    };
 
-    // 4️⃣ Send email via Brevo SDK
-    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    // Send email via Resend API
+    const response = await axios.post(
+      "https://api.resend.com/emails",
+      payload,
+      {
+        headers: {
+          "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    console.log("✅ Email sent successfully:", result);
+    console.log("✅ Email sent successfully via Resend:", response.data);
 
     res.status(200).json({
       success: true,
       message: "Receipt sent successfully",
-      result,
+      result: response.data,
     });
   } catch (err) {
-    console.error("❌ Error sending receipt email:", err);
-
-    // Send more detailed error if available
-    const errorMessage =
-      err.response?.body?.message || err.message || "Failed to send receipt";
-
-    res.status(500).json({ success: false, message: errorMessage });
+    console.error("❌ Error sending receipt via Resend:", err.response?.data || err.message);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send receipt",
+      error: err.response?.data || err.message,
+    });
   }
 });
+
 
 /* =========================
    GENERAL (Both User & Seller)
