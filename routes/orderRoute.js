@@ -2,7 +2,8 @@ import express from "express";
 import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
-import { Resend } from 'resend';
+import { generateInvoice } from "../utils/generateInvoice.js";
+import { sendReceiptEmail } from "../utils/sendReceipt";
 
 import {
   cancelOrderByUser,
@@ -87,62 +88,37 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
 ========================= */
 orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   try {
-    // 1. Added orderId to the destructuring so we can tag the email
-    const { email, name, pdfData, fileName, orderId } = req.body;
+    const { orderId } = req.body;
 
-    if (!email || !pdfData) {
-      return res.status(400).json({
-        success: false,
-        message: "Recipient email and PDF data are required",
-      });
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: "Order ID is required" });
     }
 
-    const cleanPdfBase64 = pdfData.replace(/^data:application\/pdf;base64,/, "");
+    // 1. Fetch data from Database
+    const order = await Order.findById(orderId);
+    const user = await User.findById(order.userId);
 
-    const { data, error } = await resend.emails.send({
-      // ⚠️ IMPORTANT: Changed from Gmail to Resend's testing address
-      from: 'KG Super Shop <onboarding@resend.dev>', 
-      to: [email],
-      subject: 'Your Order Invoice',
-      html: `<h1>Hello ${name || "Customer"},</h1><p>Thank you for your order! Please find your invoice attached.</p>`,
-      attachments: [
-        {
-          filename: fileName || 'invoice.pdf',
-          content: cleanPdfBase64,
-        },
-      ],
-      // 2. Added tags so the Webhook knows which order this belongs to
-      tags: [
-        {
-          name: 'category',
-          value: 'order_receipt',
-        },
-        {
-          name: 'order_id',
-          value: orderId || 'unknown',
-        },
-      ],
-    });
-
-    if (error) {
-      // Resend errors often have a message and a name
-      console.error("Resend API Error Detail:", error);
-      return res.status(400).json({ success: false, message: error.message });
+    if (!order || !user) {
+      return res.status(404).json({ success: false, message: "Order or User not found" });
     }
 
-    console.log("✅ Email sent via Resend. ID:", data.id);
+    // 2. Generate the PDF file
+    // This returns the file path (e.g., 'invoices/invoice-123.pdf')
+    const invoicePath = await generateInvoice(order, user);
+
+    // 3. Send the Email using the path
+    await sendReceiptEmail(user.email, invoicePath);
 
     res.status(200).json({
       success: true,
-      message: "Receipt sent successfully",
-      id: data.id,
+      message: "Invoice generated and email sent successfully!",
     });
-    
+
   } catch (error) {
-    console.error("❌ Server Error:", error);
+    console.error("❌ Receipt Error:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to process receipt",
       error: error.message,
     });
   }
