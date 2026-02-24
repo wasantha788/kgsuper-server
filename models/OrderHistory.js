@@ -16,7 +16,7 @@ const orderHistorySchema = new mongoose.Schema(
 
     action: {
       type: String,
-      enum: ["accepted", "rejected", "delivered", "cancelled"],
+      enum: ["accepted", "rejected", "delivered", "paid"],
       required: true,
     },
 
