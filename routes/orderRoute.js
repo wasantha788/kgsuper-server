@@ -1,8 +1,9 @@
 import express from "express";
+import fs from "fs"; // Added for file cleanup
 import authSeller from "../middlewares/authSeller.js";
 import authUser from "../middlewares/authUser.js";
 import Order from "../models/Order.js";
-import User from "../models/user.js";
+import User from "../models/user.js"; 
 import { generateInvoice } from "../utils/generateInvoice.js";
 import { sendReceiptEmail } from "../utils/sendReceipt.js";
 
@@ -20,9 +21,7 @@ import {
 import dotenv from "dotenv";
 dotenv.config();
 
-
 const orderRouter = express.Router();
-
 
 /* =========================
    PLACEMENT (Customers)
@@ -33,7 +32,6 @@ orderRouter.post("/stripe", authUser, placeOrderStripe);
 /* =========================
    MANAGEMENT (Sellers)
 ========================= */
-// This is for the Seller Dashboard list
 orderRouter.get("/seller", authSeller, getAllOrders);
 orderRouter.put("/status/:orderId", authSeller, updateOrderStatusByAdmin);
 orderRouter.delete("/delete/:orderId", authSeller, deleteOrder);
@@ -43,14 +41,7 @@ orderRouter.delete("/delete/:orderId", authSeller, deleteOrder);
 ========================= */
 orderRouter.get("/user", authUser, getUserOrders);
 orderRouter.put("/cancel/:orderId", authUser, cancelOrderByUser);
-
-
-
-
-
-orderRouter.post("/assign",  assignDeliveryBoy);
-
-
+orderRouter.post("/assign", assignDeliveryBoy);
 
 // Customer updates chat status
 orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
@@ -61,7 +52,6 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-    // Use req.user.id instead of req.user._id
     if (req.user.id.toString() !== order.user.toString())
       return res.status(403).json({ success: false, message: "Not allowed" });
 
@@ -70,16 +60,15 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
 
     res.json({ success: true, order });
   } catch (err) {
-    console.log("Chat Status Update Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
 
 /* =========================
    EMAIL RECEIPT (Sellers) via Resend
 ========================= */
 orderRouter.post("/send-receipt", authSeller, async (req, res) => {
+  let invoicePath = null;
   try {
     const { orderId } = req.body;
 
@@ -89,18 +78,26 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
 
     // 1. Fetch data from Database
     const order = await Order.findById(orderId);
-    const user = await User.findById(order.userId);
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-    if (!order || !user) {
-      return res.status(404).json({ success: false, message: "Order or User not found" });
+    // Use order.userId or order.user depending on your Schema
+    const userId = order.userId || order.user;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
     // 2. Generate the PDF file
-    // This returns the file path (e.g., 'invoices/invoice-123.pdf')
-    const invoicePath = await generateInvoice(order, user);
+    invoicePath = await generateInvoice(order, user);
 
     // 3. Send the Email using the path
     await sendReceiptEmail(user.email, invoicePath);
+
+    // 4. Cleanup: Delete the file after sending to save disk space
+    if (fs.existsSync(invoicePath)) {
+        fs.unlinkSync(invoicePath);
+    }
 
     res.status(200).json({
       success: true,
@@ -109,6 +106,12 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
 
   } catch (error) {
     console.error("❌ Receipt Error:", error);
+    
+    // Attempt cleanup even if sending failed
+    if (invoicePath && fs.existsSync(invoicePath)) {
+        fs.unlinkSync(invoicePath);
+    }
+
     res.status(500).json({
       success: false,
       message: "Failed to process receipt",
@@ -116,16 +119,13 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
     });
   }
 });
+
 /* =========================
    GENERAL (Both User & Seller)
 ========================= */
-// Fixed: Both User and Seller need to be able to view a single order
 orderRouter.get("/:orderId", (req, res, next) => {
-    // Logic to allow if it's a seller OR the user who owns the order
-    // For now, checking if either token is present:
     if (req.headers.seller_token) return authSeller(req, res, next);
     return authUser(req, res, next);
 }, getOrderById);
-
 
 export default orderRouter;
