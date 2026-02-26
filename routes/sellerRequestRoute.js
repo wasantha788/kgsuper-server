@@ -27,7 +27,7 @@ const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 const sendEmail = async ({ to, subject, html }) => {
   try {
     await emailApi.sendTransacEmail({
-      sender: { name: "K.G SUPER Marketplace", email: process.env.EMAIL_USER },
+      sender: { name: "K.G SUPER Marketplace", email: process.env.BREVO_USER },
       to: [{ email: to }],
       subject,
       htmlContent: html,
