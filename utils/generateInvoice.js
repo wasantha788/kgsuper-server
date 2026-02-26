@@ -6,7 +6,7 @@ export const generateInvoice = (order, user) => {
   return new Promise((resolve, reject) => {
     const invoiceDir = "invoices";
     
-    // Ensure directory exists (Recursive: true handles nested folders if needed)
+    
     if (!fs.existsSync(invoiceDir)) {
       fs.mkdirSync(invoiceDir, { recursive: true });
     }
