@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import SellerRequestProduct from "../models/sellerRequestProduct.js";
-import cloudinary from "../configs/cloudinary.js";
+import { v2 as cloudinary } from "cloudinary";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 
