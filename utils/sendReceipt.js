@@ -2,7 +2,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 dotenv.config();
 
-export const sendEmailReceipt = async ({ to, subject, html, attachments = [] }) => {
+export const sendReceiptEmail = async ({ to, subject, html, attachments = [] }) => {
   try {
     const transporter = nodemailer.createTransport({
       host: "kgsupershop@gmail.com",
