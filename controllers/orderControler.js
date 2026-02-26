@@ -10,9 +10,13 @@ import { sendReceiptEmail } from "../utils/sendReceipt.js";
 // ------------------------
 export const placeOrderCOD = async (req, res) => {
   try {
-    const { userId, items, address, chatEnabled, locationEnabled } = req.body;
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
 
-    if (!userId || !address || !items || items.length === 0) {
+    const { items, address, chatEnabled, locationEnabled } = req.body;
+
+    if (!address || !items || items.length === 0) {
       return res.json({ success: false, message: "Invalid order data" });
     }
 
@@ -29,7 +33,7 @@ export const placeOrderCOD = async (req, res) => {
     amount += Math.floor(amount * 0.02);
 
     const order = await Order.create({
-      user: req.user.id,
+      user: req.user.id, 
       items,
       amount,
       address,
@@ -38,16 +42,15 @@ export const placeOrderCOD = async (req, res) => {
       chatEnabled: chatEnabled ?? false,
       locationEnabled: locationEnabled ?? false,
     });
-   
-    // ✅ FIX: Clear user cart after successful COD order
-    await User.findByIdAndUpdate(userId, { cartItems: {} });
+
+    // Clear user cart
+    await User.findByIdAndUpdate(req.user.id, { cartItems: {} });
 
     res.json({ success: true, message: "Order placed successfully", order });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
-  
 // ------------------------
 // PLACE ORDER - STRIPE
 // ------------------------
