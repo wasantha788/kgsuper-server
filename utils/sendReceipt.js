@@ -1,21 +1,21 @@
-import { Resend } from "resend";
+import Resend from "resend";
 import fs from "fs";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-export const sendReceiptEmail = async (userEmail, invoicePath) => {
-  const fileBuffer = fs.readFileSync(invoicePath);
+export const sendReceiptEmail = async (toEmail, pdfPath, options) => {
+  const pdfData = fs.readFileSync(pdfPath).toString("base64");
 
   await resend.emails.send({
-    from: "KG Super <onboarding@resend.dev>",
-    to: userEmail,
-    subject: "Payment Successful - Invoice Attached ✅",
-    html: `<h2>Thank you for your payment!</h2>
-           <p>Your invoice is attached as a PDF.</p>`,
+    from: options.from,
+    to: toEmail,
+    subject: options.subject,
+    html: options.html,
     attachments: [
       {
-        filename: "invoice.pdf",
-        content: fileBuffer.toString("base64"),
+        name: `Invoice_${Date.now()}.pdf`,
+        data: pdfData,
+        type: "application/pdf",
       },
     ],
   });
