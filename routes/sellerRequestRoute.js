@@ -150,23 +150,31 @@ router.patch("/update-status/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const product = await SellerRequestProduct.findById(req.params.id);
+
     if (!product) {
       return res.status(404).json({ success: false, message: "Product not found" });
     }
 
-    // Clean up Cloudinary storage
-    if (product.images && product.images.length > 0) {
-      const deletePromises = product.images.map(img => 
-        cloudinary.uploader.destroy(img.publicId)
-      );
-      await Promise.all(deletePromises);
+    // Delete Cloudinary images safely
+    if (product.images?.length) {
+      for (const img of product.images) {
+        if (img.publicId) {
+          try {
+            await cloudinary.uploader.destroy(img.publicId);
+          } catch (cloudErr) {
+            console.error("Cloudinary delete failed:", cloudErr.message);
+          }
+        }
+      }
     }
 
     await SellerRequestProduct.findByIdAndDelete(req.params.id);
+
     res.json({ success: true, message: "Product and images deleted" });
+
   } catch (err) {
     console.error("Delete Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: "Delete failed: " + err.message });
   }
 });
 
