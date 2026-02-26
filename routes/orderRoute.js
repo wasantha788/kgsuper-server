@@ -71,39 +71,55 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   let invoicePath = null;
   try {
     const { orderId } = req.body;
+
     if (!orderId) {
       return res.status(400).json({ success: false, message: "Order ID is required" });
     }
 
+    // 1. Fetch data from Database
     const order = await Order.findById(orderId).populate("items.product");
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
+    // Use order.userId or order.user depending on your Schema
     const userId = order.userId || order.user;
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 2. Generate the PDF file
     invoicePath = await generateInvoice(order, user);
+
+    // 3. Send the Email using the path
     await sendReceiptEmail(user.email, invoicePath);
 
-    // Cleanup after sending
-    if (fs.existsSync(invoicePath)) fs.unlinkSync(invoicePath);
+    // 4. Cleanup: Delete the file after sending to save disk space
+    if (fs.existsSync(invoicePath)) {
+        fs.unlinkSync(invoicePath);
+    }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: "Invoice generated and email sent successfully!",
     });
+
   } catch (error) {
     console.error("❌ Receipt Error:", error);
+    
+    // Attempt cleanup even if sending failed
     if (invoicePath && fs.existsSync(invoicePath)) {
-      setTimeout(() => fs.unlinkSync(invoicePath), 5000);
+        fs.unlinkSync(invoicePath);
     }
-    return res.status(500).json({
+
+    res.status(500).json({
       success: false,
       message: "Failed to process receipt",
       error: error.message,
     });
   }
 });
+
 /* =========================
    GENERAL (Both User & Seller)
 ========================= */
