@@ -21,14 +21,23 @@ export const loginSellerRequest = async (req, res) => {
       return res.status(400).json({ message: "Invalid email or password" });
     }
 
+    // ✅ CREATE TOKEN
+    const token = jwt.sign(
+      { id: seller._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
     res.status(200).json({
       message: "Login successful",
+      token, // 🔥 VERY IMPORTANT
       seller: {
         id: seller._id,
         name: seller.name,
         email: seller.email,
       },
     });
+
   } catch (error) {
     console.error("LOGIN ERROR:", error);
     res.status(500).json({ message: "Server error" });
