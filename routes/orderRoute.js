@@ -67,55 +67,53 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
 /* =========================
    EMAIL RECEIPT (Sellers) via Resend
 ========================= */
-orderRouter.post("/send-receipt", authSeller, async (req, res) => {
+  orderRouter.post("/send-receipt", authSeller, async (req, res) => {
   let invoicePath = null;
+
   try {
     const { orderId } = req.body;
+    if (!orderId)
+      return res
+        .status(400)
+        .json({ success: false, message: "Order ID is required" });
 
-    if (!orderId) {
-      return res.status(400).json({ success: false, message: "Order ID is required" });
-    }
-
-    // 1. Fetch data from Database
+    // Fetch order with populated product info
     const order = await Order.findById(orderId).populate("items.product");
-    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!order)
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
 
-    // Use order.userId or order.user depending on your Schema
     const userId = order.userId || order.user;
     const user = await User.findById(userId);
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
 
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    // 2. Generate the PDF file
+    // Generate PDF invoice
     invoicePath = await generateInvoice(order, user);
 
-    // 3. Send the Email using the path
+    // Send email via Brevo/Sendinblue
     await sendReceiptEmail(user.email, invoicePath);
 
-    // 4. Cleanup: Delete the file after sending to save disk space
-    if (fs.existsSync(invoicePath)) {
-        fs.unlinkSync(invoicePath);
-    }
+    // Cleanup: remove temporary file
+    if (invoicePath && fs.existsSync(invoicePath)) fs.unlinkSync(invoicePath);
 
     res.status(200).json({
       success: true,
       message: "Invoice generated and email sent successfully!",
     });
+  } catch (err) {
+    console.error("Send Receipt Error:", err);
 
-  } catch (error) {
-    console.error("❌ Receipt Error:", error);
-    
-    // Attempt cleanup even if sending failed
-    if (invoicePath && fs.existsSync(invoicePath)) {
-        fs.unlinkSync(invoicePath);
-    }
+    // Attempt cleanup even if error occurs
+    if (invoicePath && fs.existsSync(invoicePath)) fs.unlinkSync(invoicePath);
 
     res.status(500).json({
       success: false,
-      message: "Failed to process receipt",
-      error: error.message,
+      message: "Failed to send receipt",
+      error: err.message,
     });
   }
 });
