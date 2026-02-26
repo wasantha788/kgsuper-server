@@ -1,31 +1,31 @@
-import nodemailer from "nodemailer";
-import dotenv from "dotenv";
-dotenv.config();
+import fs from "fs";
+import SibApiV3Sdk from "sib-api-v3-sdk";
 
-export const sendReceiptEmail = async ({ to, subject, html, attachments = [] }) => {
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
+
+export const sendReceiptEmail = async (toEmail, pdfPath) => {
   try {
-    const transporter = nodemailer.createTransport({
-      host: "kgsupershop@gmail.com",
-      port: 587,
-      secure: false, // true for 465
-      auth: {
-        user: process.env.BREVO_USER,
-        pass: process.env.BREVO_PASS,
-      },
+    const pdfData = fs.readFileSync(pdfPath).toString("base64");
+    const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
+      sender: { name: "KG Super Shop", email: "kgsupershop@gmail.com" },
+      to: [{ email: toEmail }],
+      subject: "Payment Successful - Invoice Attached ✅",
+      htmlContent: `<h2>Thank you for your payment!</h2>
+                    <p>Your invoice is attached as a PDF.</p>`,
+      attachment: [
+        {
+          content: pdfData,
+          name: `Invoice_${Date.now()}.pdf`,
+        },
+      ],
     });
 
-    const info = await transporter.sendMail({
-      from: `"KG Super Shop" <${process.env.BREVO_USER}>`,
-      to,
-      subject,
-      html,
-      attachments, // For PDFs: [{ filename: 'invoice.pdf', content: pdfBuffer }]
-    });
-
-    console.log("Email sent:", info.messageId);
-    return { success: true };
-  } catch (err) {
-    console.error("Email send failed:", err);
-    return { success: false, error: err.message };
+    await emailApi.sendTransacEmail(sendSmtpEmail);
+    console.log("✅ Invoice sent via Brevo successfully!");
+  } catch (error) {
+    console.error("❌ Brevo Send Error:", error);
+    throw error;
   }
 };
