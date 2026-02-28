@@ -96,7 +96,7 @@ router.patch("/update-status/:id", async (req, res) => {
           <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
             <h2 style="color: #059669;">Hello ${product.sellerName},</h2>
             <p>Your product "<strong>${product.name}</strong>" has been <strong>${status.toUpperCase()}</strong> by the administrator.</p>
-            <p>Log in to your portal to see more details.</p>
+            <p>Log in to your portal to see more details. Contact us 035-2261599 / 070-1835063 </p><br><p>Email: kgsupershop@gmail.com</p>
             <br/>
             <p style="font-size: 12px; color: #64748b;">Thank you for choosing K.G SUPER Marketplace.</p>
           </div>
