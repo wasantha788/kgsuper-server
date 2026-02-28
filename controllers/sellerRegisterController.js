@@ -42,20 +42,21 @@ export const registerSellerRequest = async (req, res) => {
 
     // Send verification email via Brevo
     const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}&id=${seller._id}`;
+    const verifyUrl = `https://kgsuper-client-production.up.railway.app/verify-email?token=${verificationToken}&id=${seller._id}`;
+
 
     const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-      sender: { name: "K.G SUPER Marketplace", email: process.env.BREVO_USER },
+      sender: {
+        name: "K.G SUPER Marketplace",
+        email: process.env.BREVO_USER // MUST NOT be undefined
+      },
       to: [{ email: seller.email, name: seller.name }],
-      subject: "Verify your email - K.G SUPER Marketplace",
+      subject: "Verify your email",
       htmlContent: `
-        <div style="font-family:sans-serif; padding:20px; border:1px solid #e2e8f0; border-radius:10px;">
-          <h2 style="color:#059669;">Welcome, ${seller.name}!</h2>
-          <p>Click the link below to verify your email and activate your account:</p>
-          <a href="${verifyUrl}" target="_blank" style="display:inline-block; padding:10px 20px; background:#059669; color:white; border-radius:5px; text-decoration:none;">Verify Email</a>
-          <p style="font-size:12px; color:#64748b;">This link will expire in 24 hours.</p>
-        </div>
-      `,
+    <h2>Welcome, ${seller.name}!</h2>
+    <p>Click the link below to verify your email and activate your account:</p>
+    <a href="${verifyUrl}" target="_blank">Verify Email</a>
+  `,
     });
 
     await apiInstance.sendTransacEmail(sendSmtpEmail);
