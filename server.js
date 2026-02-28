@@ -25,6 +25,7 @@ import sellerRegisterRoutes from "./routes/sellerRegisterRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoute.js";
 import analyticsRoutes from "./routes/analyticsRoute.js";
 import chat from "./routes/aiRoute.js";
+import sellerAuthRoutes from "./routes/sellerAuthRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -81,6 +82,7 @@ const allowedOrigins = [
     app.use("/api/delivery", deliveryRoutes);
     app.use("/api/analytics", analyticsRoutes);
     app.use("/api/ai", chat);
+    app.use("/api/verify", sellerAuthRoutes);
 
     // 6️⃣ SOCKET.IO SETUP
     const io = new Server(server, {
