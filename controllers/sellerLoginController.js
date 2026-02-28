@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import SellerRequestUser from "../models/SellerRequestUser.js";
+import jwt from "jsonwebtoken";
 
 export const loginSellerRequest = async (req, res) => {
   try {
