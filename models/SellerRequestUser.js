@@ -24,7 +24,11 @@ const sellerRequestUserSchema = new mongoose.Schema(
     verificationToken: {
       type: String,
     },
+
+    verificationExpires: { 
+      type: Date }, 
   },
+
   { timestamps: true }
 );
 

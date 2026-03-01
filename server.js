@@ -21,7 +21,7 @@ import cartRouter from "./routes/cartRoute.js";
 import addressRouter from "./routes/addressRoute.js";
 import orderRouter from "./routes/orderRoute.js";
 import sellerRequestRoute from "./routes/sellerRequestRoute.js";
-import sellerRegisterRoutes from "./routes/sellerRegisterRoutes.js";
+import sellerAuthRoutes from "./routes/sellerAuthRoutes.js";
 import deliveryRoutes from "./routes/deliveryRoute.js";
 import analyticsRoutes from "./routes/analyticsRoute.js";
 import chat from "./routes/aiRoute.js";
@@ -73,7 +73,7 @@ const allowedOrigins = [
     app.get("/", (req, res) => res.send("API is Working ✅"));
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
-    app.use("/api", sellerRegisterRoutes);
+    app.use("/api/auth", sellerAuthRoutes);
     app.use("/api/sellerRequest", sellerRequestRoute);
     app.use("/api/product", productRouter);
     app.use("/api/cart", cartRouter);
