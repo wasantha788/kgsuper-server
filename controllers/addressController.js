@@ -1,68 +1,40 @@
 import Address from "../models/Address.js";
 
+
+
 /**
- * ✅ ADD ADDRESS (AUTH REQUIRED)
+ * ✅ SAVE/UPDATE ADDRESS (AUTH REQUIRED)
  * POST /api/address/add
  */
 export const addAddress = async (req, res) => {
   try {
-    const userId = req.user.id; // ✅ from JWT cookie
+    const userId = req.user.id;
+    const addressData = req.body;
 
-    const {
-      firstName,
-      lastName,
-      email,
-      street,
-      city,
-      state,
-      zipcode,
-      country,
-      phone,
-    } = req.body;
-
-    // 🔐 Validate required fields
-    if (
-      !firstName ||
-      !lastName ||
-      !email ||
-      !street ||
-      !city ||
-      !state ||
-      !zipcode ||
-      !country ||
-      !phone
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required",
-      });
+    // 1. Basic validation (already good in your version)
+    const requiredFields = ['firstName', 'lastName', 'email', 'street', 'city', 'state', 'zipcode', 'country', 'phone'];
+    for (const field of requiredFields) {
+      if (!addressData[field]) {
+        return res.status(400).json({ success: false, message: `${field} is required` });
+      }
     }
 
-    // ✅ Create address
-    const address = await Address.create({
-      userId,
-      firstName,
-      lastName,
-      email,
-      street,
-      city,
-      state,
-      zipcode,
-      country,
-      phone,
-    });
+    // 2. UPSERT LOGIC: Find existing address for this user and update it, 
+    // or create a new one if it doesn't exist (upsert: true)
+    const address = await Address.findOneAndUpdate(
+      { userId }, // Find by user ID
+      { ...addressData, userId }, // Data to update
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
 
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
-      message: "Address added successfully",
+      message: "Address saved successfully",
       address,
     });
   } catch (error) {
-    console.error("Add Address Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to add address",
-    });
+    console.error("Save Address Error:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -123,3 +95,4 @@ export const deleteAddress = async (req, res) => {
     });
   }
 };
+
