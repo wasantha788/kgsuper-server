@@ -118,9 +118,12 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
    GENERAL (Shared)
 ========================= */
 orderRouter.get("/:orderId", (req, res, next) => {
-    // If it's a seller token, use seller auth, otherwise use user auth
-    if (req.headers.token || req.headers.seller_token) {
-        const authMethod = req.headers.seller_token ? authSeller : authUser;
+    if (req.headers.token || req.headers.seller_token || req.headers.delivery_token) {
+        let authMethod;
+        if (req.headers.seller_token) authMethod = authSeller;
+        else if (req.headers.delivery_token) authMethod = authDelivery; 
+        else authMethod = authUser;
+        
         return authMethod(req, res, next);
     }
     return res.status(401).json({ success: false, message: "Authentication required" });
