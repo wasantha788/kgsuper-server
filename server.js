@@ -90,6 +90,7 @@ const allowedOrigins = [
         methods: ["GET", "POST"],
         credentials: true,
       },
+      transports: ["websocket", "polling"],
     });
 
     setIO(io);
