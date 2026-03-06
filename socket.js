@@ -7,7 +7,8 @@ export let io;
 // ---------------- SOCKET STATE ----------------
 const deliveryBoys = new Map();      // deliveryBoyId → socketId
 const activeConnections = new Map(); // roomId → Map(socketId → { name })
-const userNames = new Map();         // socketId → userName
+const userNames = new Map();  
+const onlineDeliveryBoys = new Map();        // socketId → userName
 
 export const setIO = (serverIo) => {
   io = serverIo;
@@ -23,7 +24,13 @@ export const setIO = (serverIo) => {
     socket.on("join_seller", () => {
       socket.join("sellerRoom");
     });
+    
+     // ---------------- DELIVERY BOY ONLINE COUNT ----------------
+    socket.on("join_delivery", (deliveryBoy) => {
+      onlineDeliveryBoys.set(socket.id, deliveryBoy);
 
+      io.emit("deliveryBoyCount", onlineDeliveryBoys.size);
+    });
     // ---------------- DELIVERY AGENT REGISTRATION ----------------
     socket.on("registerDeliveryBoy", async (deliveryBoyId) => {
       if (!deliveryBoyId) return;
@@ -113,63 +120,56 @@ export const setIO = (serverIo) => {
     });
 
     // ---------------- ORDER FLOW LOGIC ----------------
-    // In socket.js
-socket.on("send-to-delivery", async ({ order }) => {
-  if (!order?._id) return;
-  try {
-    const freshOrder = await Order.findById(order._id)
-      .populate("items.product")
-      .populate("address");
-      // Note: assignedDeliveryBoy is null here, so we don't populate it yet
+    socket.on("send-to-delivery", async ({ order }) => {
+      if (!order?._id) return;
+      try {
+        const freshOrder = await Order.findById(order._id)
+          .populate("items.product")
+          .populate("address")
+          .populate("assignedDeliveryBoy", "name phone vehicleType");
 
-    // This sends the order to all delivery boys currently online
-    io.to("deliveryRoom").emit("newDeliveryOrder", freshOrder);
-  } catch (err) {
-    console.error("❌ send-to-delivery error:", err);
-  }
-});
-
-   // --- Inside socket.on("accept-order") in your backend ---
-socket.on("accept-order", async ({ orderId }) => {
-  try {
-    const deliveryBoyId = socket.deliveryBoyId;
-    if (!deliveryBoyId) return;
-
-    const order = await Order.findOneAndUpdate(
-      { _id: orderId, assignedDeliveryBoy: null },
-      { assignedDeliveryBoy: deliveryBoyId, status: "Out for delivery" },
-      { new: true }
-    )
-    .populate("items.product")
-    .populate("address")
-    .populate("assignedDeliveryBoy", "name phone vehicleType");
-
-    if (!order) {
-      return socket.emit("orderRejectedNotification", { message: "Order already taken!" });
-    }
-
-    // 1. Tell the accepting driver to move this to 'Active'
-    socket.emit("orderUpdated", order);
-
-    // 2. Tell ALL other drivers to remove this order from their 'New Opportunities' feed
-    socket.to("deliveryRoom").emit("orderRemoved", { orderId });
-
-    // 3. Notify the Seller
-    io.to("sellerRoom").emit("orderAcceptedByDelivery", {
-      orderId: order._id,
-      status: order.status,
-      deliveryBoy: {
-        name: order.assignedDeliveryBoy.name,
-        phone: order.assignedDeliveryBoy.phone,
-        vehicle: order.assignedDeliveryBoy.vehicleType,
-      },
+        io.to("deliveryRoom").emit("newDeliveryOrder", freshOrder);
+      } catch (err) {
+        console.error("❌ send-to-delivery error:", err);
+      }
     });
-  } catch (err) {
-    console.error("❌ accept-order error:", err);
-  }
-});
 
+    socket.on("accept-order", async ({ orderId }) => {
+      try {
+        const deliveryBoyId = socket.deliveryBoyId;
+        if (!deliveryBoyId) return;
 
+        const order = await Order.findOneAndUpdate(
+          { _id: orderId, assignedDeliveryBoy: null },
+          { assignedDeliveryBoy: deliveryBoyId, status: "Out for delivery" },
+          { new: true }
+        )
+          .populate("items.product")
+          .populate("address")
+          .populate("assignedDeliveryBoy", "name phone vehicleType");
+
+        if (!order) {
+          return socket.emit("orderRejectedNotification", {
+            message: "Order already taken!",
+          });
+        }
+
+        socket.emit("orderUpdated", order);
+        socket.to("deliveryRoom").emit("orderRemoved", { orderId });
+
+        io.to("sellerRoom").emit("orderAcceptedByDelivery", {
+          orderId: order._id,
+          status: order.status,
+          deliveryBoy: {
+            name: order.assignedDeliveryBoy.name,
+            phone: order.assignedDeliveryBoy.phone,
+            vehicle: order.assignedDeliveryBoy.vehicleType,
+          },
+        });
+      } catch (err) {
+        console.error("❌ accept-order error:", err);
+      }
+    });
 
     socket.on("update-order-status", async ({ orderId, status }) => {
       try {
@@ -228,11 +228,12 @@ socket.on("accept-order", async ({ orderId }) => {
       }
     });
 
-
-    
     // ---------------- DISCONNECT ----------------
     socket.on("disconnect", () => {
       console.log("❌ Disconnected:", socket.id);
+
+        onlineDeliveryBoys.delete(socket.id); // ✅ remove from online list
+      io.emit("deliveryBoyCount", onlineDeliveryBoys.size);
 
       if (socket.deliveryBoyId) deliveryBoys.delete(socket.deliveryBoyId);
       userNames.delete(socket.id);
