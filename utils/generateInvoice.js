@@ -5,89 +5,120 @@ import path from "path";
 export const generateInvoice = (order, user) => {
   return new Promise((resolve, reject) => {
     const invoiceDir = "invoices";
-    
-    
+    const invoicePath = path.join(invoiceDir, `invoice-${order._id}.pdf`);
+
     if (!fs.existsSync(invoiceDir)) {
-      fs.mkdirSync(invoiceDir, { recursive: true });
+      fs.mkdirSync(invoiceDir);
     }
 
-    const invoicePath = path.join(invoiceDir, `invoice-${order._id}.pdf`);
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 50 });
     const stream = fs.createWriteStream(invoicePath);
-
-    // Handle stream errors immediately
-    stream.on("error", (err) => reject(err));
-    
     doc.pipe(stream);
 
     /* ================= HEADER ================= */
-    doc.fillColor("#2E86C1").fontSize(26).text("KG SUPER", { align: "center" });
-    doc.fillColor("black").fontSize(14).text("Payment Receipt", { align: "center" });
+    doc
+      .fontSize(28)
+      .fillColor("#1A5276")
+      .font("Helvetica-Bold")
+      .text("KG SUPER SHOP", { align: "left" });
+
+    doc
+      .fontSize(10)
+      .fillColor("#7F8C8D")
+      .text("Premium Grocery & Daily Essentials", { align: "left" })
+      .moveDown(0.5);
+
+    doc.moveTo(50, 95).lineTo(550, 95).lineWidth(2).strokeColor("#1A5276").stroke();
     doc.moveDown(2);
 
-    /* ================= CUSTOMER BOX ================= */
-    doc.rect(50, 130, 500, 80).stroke();
-    doc.fontSize(11)
-       .text(`Invoice ID: ${order._id}`, 60, 140)
-       .text(`Customer Email: ${user.email || "N/A"}`, 60, 160)
-       .text(`Date: ${new Date().toLocaleDateString()}`, 60, 180);
+    /* ================= INFO SECTION ================= */
+    const infoTop = 115;
+    
+    doc.fillColor("#1A5276").fontSize(12).font("Helvetica-Bold").text("BILL TO:", 50, infoTop);
+    doc.fillColor("#2C3E50").font("Helvetica").fontSize(11)
+      .text(`${order.address?.firstName} ${order.address?.lastName}`, 50, infoTop + 15)
+      .text(order.address?.email || user.email, 50, infoTop + 30)
+      .text(`${order.address?.street}, ${order.address?.city}`, 50, infoTop + 45);
+
+    doc.fillColor("#1A5276").font("Helvetica-Bold").text("INVOICE DETAILS:", 350, infoTop);
+    doc.fillColor("#2C3E50").font("Helvetica").fontSize(10)
+      .text(`Invoice ID: #${order._id.toString().toUpperCase()}`, 350, infoTop + 15)
+      .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 350, infoTop + 30)
+      .text(`Status: ${order.paymentType === 'COD' ? 'Unpaid (COD)' : 'Paid Online'}`, 350, infoTop + 45);
 
     /* ================= TABLE HEADER ================= */
-    const tableTop = 240;
-    doc.fontSize(12).fillColor("#333")
-       .text("Item", 50, tableTop)
-       .text("Qty", 320, tableTop, { width: 50, align: "right" })
-       .text("Price", 380, tableTop, { width: 80, align: "right" })
-       .text("Total", 470, tableTop, { width: 80, align: "right" });
-
-    doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+    const tableTop = 230;
+    doc.fillColor("#FBFCFC").rect(50, tableTop - 5, 500, 20).fill("#1A5276");
+    doc.fillColor("#FFFFFF").fontSize(10).font("Helvetica-Bold")
+      .text("Description", 60, tableTop)
+      .text("Qty", 320, tableTop, { width: 50, align: "center" })
+      .text("Unit Price", 380, tableTop, { width: 80, align: "right" })
+      .text("Amount", 470, tableTop, { width: 80, align: "right" });
 
     /* ================= TABLE CONTENT ================= */
-    let position = tableTop + 30;
-    let subtotal = 0;
+    let position = tableTop + 25;
+    let itemsSubtotal = 0;
 
-    // Safety check for items array
-    const items = order.items || [];
+    doc.font("Helvetica").fillColor("#2C3E50");
+    order.items.forEach((item, index) => {
+      const product = item.product;
+      if (!product) return;
 
-    items.forEach((item) => {
-      // Handle cases where product might be deleted or not populated
-      const productName = item.product?.name || "Unknown Product";
-      const price = Number(item.product?.price || 0);
-      const qty = Number(item.quantity || 0);
+      const price = Number(product.offerPrice ?? product.price);
+      const qty = Number(item.quantity);
       const itemTotal = price * qty;
-      subtotal += itemTotal;
+      itemsSubtotal += itemTotal;
 
-      // Check if we are running out of page space
-      if (position > 700) { 
-        doc.addPage();
-        position = 50; // Reset position for new page
+      if (index % 2 !== 0) {
+        doc.fillColor("#F4F6F7").rect(50, position - 5, 500, 20).fill();
       }
 
-      doc.fontSize(10).fillColor("black")
-         .text(productName, 50, position, { width: 250, lineBreak: true })
-         .text(qty.toString(), 320, position, { width: 50, align: "right" })
-         .text(`LKR ${price.toLocaleString()}`, 380, position, { width: 80, align: "right" })
-         .text(`LKR ${itemTotal.toLocaleString()}`, 470, position, { width: 80, align: "right" });
+      doc.fillColor("#2C3E50").fontSize(10)
+        .text(product.name, 60, position, { width: 250 })
+        .text(qty.toString(), 320, position, { width: 50, align: "center" })
+        .text(`${price.toFixed(2)}`, 380, position, { width: 80, align: "right" })
+        .text(`${itemTotal.toFixed(2)}`, 470, position, { width: 80, align: "right" });
 
-      // Calculate next position based on text height (handles multi-line names)
-      const textHeight = doc.heightOfString(productName, { width: 250 });
-      position += Math.max(textHeight, 20) + 10;
+      position += 20;
     });
 
-    /* ================= TOTAL SECTION ================= */
-    doc.moveTo(300, position).lineTo(550, position).stroke();
+    /* ================= SUMMARY SECTION ================= */
+    const deliveryFee = itemsSubtotal >= 5000 ? 0 : 300;
+    const finalTotal = itemsSubtotal + deliveryFee;
 
-    doc.fontSize(14).fillColor("#27AE60")
-       .text(`TOTAL PAID: LKR ${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 
-             300, position + 15, { align: "right", width: 250 });
+    position += 20;
+    doc.moveTo(350, position).lineTo(550, position).lineWidth(1).strokeColor("#BDC3C7").stroke();
+    position += 10;
+
+    // Subtotal
+    doc.fontSize(10).fillColor("#7F8C8D").text("Subtotal:", 350, position, { width: 100, align: "right" });
+    doc.fillColor("#2C3E50").text(`LKR ${itemsSubtotal.toFixed(2)}`, 470, position, { width: 80, align: "right" });
+
+    // Delivery Fee
+    position += 18;
+    doc.fillColor("#7F8C8D").text("Delivery Fee:", 350, position, { width: 100, align: "right" });
+    
+    // Check for Free Delivery
+    if (deliveryFee === 0) {
+      doc.fillColor("#27AE60").font("Helvetica-Bold").text("FREE", 470, position, { width: 80, align: "right" });
+    } else {
+      doc.fillColor("#2C3E50").font("Helvetica").text(`LKR ${deliveryFee.toFixed(2)}`, 470, position, { width: 80, align: "right" });
+    }
+
+    // Grand Total
+    position += 25;
+    doc.fontSize(14).font("Helvetica-Bold").fillColor("#1A5276")
+      .text("GRAND TOTAL:", 300, position, { width: 150, align: "right" });
+    doc.text(`LKR ${finalTotal.toFixed(2)}`, 470, position, { width: 80, align: "right" });
 
     /* ================= FOOTER ================= */
-    // Place footer at the bottom of the current page
-    doc.fontSize(10).fillColor("#888")
-       .text("Thank you for shopping with KG Super!", 50, 780, { align: "center", width: 500 });
+    const footerTop = 720;
+    doc.moveTo(50, footerTop).lineTo(550, footerTop).lineWidth(0.5).strokeColor("#D5DBDB").stroke();
+    doc.moveDown(2).font("Helvetica-Bold").fontSize(11).fillColor("#1A5276").text("Thanks for Contacting KG Super Shop!", { align: "center" });
+    doc.moveDown(0.5).font("Helvetica").fontSize(9).fillColor("#7F8C8D").text("For any queries regarding this invoice, please reach out to our support team.", { align: "center" });
 
     doc.end();
-
     stream.on("finish", () => resolve(invoicePath));
+    stream.on("error", (err) => reject(err));
   });
 };

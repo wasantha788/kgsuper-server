@@ -5,37 +5,42 @@ import Stripe from "stripe";
 import DeliveryBoy from "../models/DeliveryBoy.js";
 import { generateInvoice } from "../utils/generateInvoice.js";
 import { sendReceiptEmail } from "../utils/sendReceipt.js";
+
+
 // ------------------------
 // PLACE ORDER - COD
 // ------------------------
 export const placeOrderCOD = async (req, res) => {
   try {
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({ success: false, message: "Authentication required" });
-    }
-
     const { items, address, chatEnabled, locationEnabled } = req.body;
+    const userId = req.user.id; // Using auth middleware ID for security
 
-    if (!address || !items || items.length === 0) {
+    if (!userId || !address || !items || items.length === 0) {
       return res.json({ success: false, message: "Invalid order data" });
     }
 
-    let amount = 0;
+    let subtotal = 0;
 
+    // 1. Calculate subtotal from Database
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) return res.json({ success: false, message: "Product not found" });
+      
       const price = product.offerPrice ?? product.price;
-      amount += price * item.quantity;
+      subtotal += price * item.quantity;
     }
 
-    // Add 2% Tax
-    amount += Math.floor(amount * 0.02);
+    // 2. APPLY DELIVERY LOGIC (Tax Removed)
+    // Free if 5000 or above, otherwise 300 LKR
+    const deliveryFee = subtotal >= 5000 ? 0 : 300;
+    
+    // Final Amount = Subtotal + Delivery Fee
+    const finalAmount = subtotal + deliveryFee;
 
     const order = await Order.create({
-      user: req.user.id, 
+      user: userId,
       items,
-      amount,
+      amount: finalAmount, 
       address,
       paymentType: "COD",
       isPaid: false,
@@ -43,14 +48,16 @@ export const placeOrderCOD = async (req, res) => {
       locationEnabled: locationEnabled ?? false,
     });
 
-    // Clear user cart
-    await User.findByIdAndUpdate(req.user.id, { cartItems: {} });
-
-    res.json({ success: true, message: "Order placed successfully", order });
+    res.json({ 
+      success: true, 
+      message: "Order placed successfully", 
+      order 
+    });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
+
 // ------------------------
 // PLACE ORDER - STRIPE
 // ------------------------
@@ -65,11 +72,11 @@ export const placeOrderStripe = async (req, res) => {
     }
 
     const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const TAX_RATE = 0.02;
 
     const productData = [];
     let subtotal = 0;
 
+    // 1. Calculate the subtotal from the database (prevents price tampering)
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) continue;
@@ -84,12 +91,17 @@ export const placeOrderStripe = async (req, res) => {
       });
     }
 
-    const totalAmount = +(subtotal * (1 + TAX_RATE)).toFixed(2);
+    // 2. APPLY FRONTEND DELIVERY LOGIC (Tax Removed)
+    // Free if 5000 or above, otherwise 300 LKR
+    const deliveryFee = subtotal >= 5000 ? 0 : 300;
+
+    // 3. Final calculation for DB (Subtotal + Delivery Fee)
+    const totalAmount = subtotal + deliveryFee;
 
     const order = await Order.create({
       user: userId,
       items,
-      amount: totalAmount,
+      amount: totalAmount, 
       address,
       paymentType: "online",
       isPaid: false,
@@ -97,14 +109,27 @@ export const placeOrderStripe = async (req, res) => {
       locationEnabled: locationEnabled ?? false,
     });
 
+    // 4. Create Stripe Line Items (Clean Price, No Tax)
     const line_items = productData.map((item) => ({
       price_data: {
         currency: "lkr",
         product_data: { name: item.name },
-        unit_amount: Math.round(item.price * (1 + TAX_RATE) * 100),
+        unit_amount: Math.round(item.price * 100), // Pure product price
       },
       quantity: item.quantity,
     }));
+
+    // 5. Add Delivery Fee to Stripe Checkout if it applies
+    if (deliveryFee > 0) {
+      line_items.push({
+        price_data: {
+          currency: "lkr",
+          product_data: { name: "Delivery Fee" },
+          unit_amount: deliveryFee * 100, // 300 LKR to Stripe units
+        },
+        quantity: 1,
+      });
+    }
 
     const session = await stripeInstance.checkout.sessions.create({
       line_items,
