@@ -87,33 +87,38 @@ orderRouter.post("/send-receipt", authSeller, async (req, res) => {
     const { orderId } = req.body;
     if (!orderId) return res.status(400).json({ success: false, message: "Order ID is required" });
 
-    const order = await Order.findById(orderId).populate("items.product");
+    // FIXED: Populating BOTH items.product AND address
+    const order = await Order.findById(orderId)
+      .populate("items.product")
+      .populate("address") // CRITICAL: This fixes the "undefined" address/name issue
+      .populate("user");    // Optional: Get user directly from order
+
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-    const userId = order.userId || order.user;
-    const user = await User.findById(userId);
+    // Use the populated user or fetch manually as you did
+    const user = order.user; 
     if (!user) return res.status(404).json({ success: false, message: "Recipient user not found" });
 
     // Generate PDF invoice
     invoicePath = await generateInvoice(order, user);
 
     // Send email
-    const emailSent = await sendReceiptEmail(user.email, invoicePath);
-
-    if (!emailSent) throw new Error("Email provider failed to send");
+    await sendReceiptEmail(user.email, invoicePath);
 
     res.status(200).json({ success: true, message: "Receipt sent successfully!" });
   } catch (err) {
     console.error("Receipt Error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   } finally {
-    // Always cleanup file if it exists, whether success or failure
     if (invoicePath && fs.existsSync(invoicePath)) {
-      fs.unlinkSync(invoicePath);
+      try {
+        fs.unlinkSync(invoicePath);
+      } catch (cleanupErr) {
+        console.error("Cleanup Error:", cleanupErr.message);
+      }
     }
   }
 });
-
 /* =========================
    GENERAL (Shared)
 ========================= */

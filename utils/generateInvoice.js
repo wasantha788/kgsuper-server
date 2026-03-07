@@ -34,12 +34,14 @@ export const generateInvoice = (order, user) => {
     /* ================= INFO SECTION ================= */
     const infoTop = 115;
     
+    // Left Side: Bill To (Fixed Undefined values)
     doc.fillColor("#1A5276").fontSize(12).font("Helvetica-Bold").text("BILL TO:", 50, infoTop);
     doc.fillColor("#2C3E50").font("Helvetica").fontSize(11)
-      .text(`${order.address?.firstName} ${order.address?.lastName}`, 50, infoTop + 15)
-      .text(order.address?.email || user.email, 50, infoTop + 30)
-      .text(`${order.address?.street}, ${order.address?.city}`, 50, infoTop + 45);
+      .text(`${order.address?.firstName || ''} ${order.address?.lastName || ''}`.trim() || "Valued Customer", 50, infoTop + 15)
+      .text(order.address?.email || user?.email || "N/A", 50, infoTop + 30)
+      .text(`${order.address?.street || order.address?.address || ''}${order.address?.city ? ', ' + order.address.city : ''}` || "Address not provided", 50, infoTop + 45);
 
+    // Right Side: Invoice Details
     doc.fillColor("#1A5276").font("Helvetica-Bold").text("INVOICE DETAILS:", 350, infoTop);
     doc.fillColor("#2C3E50").font("Helvetica").fontSize(10)
       .text(`Invoice ID: #${order._id.toString().toUpperCase()}`, 350, infoTop + 15)
@@ -64,8 +66,9 @@ export const generateInvoice = (order, user) => {
       const product = item.product;
       if (!product) return;
 
-      const price = Number(product.offerPrice ?? product.price);
-      const qty = Number(item.quantity);
+      // Added parentheses to satisfy TypeScript rule ts(5076)
+      const price = Number((product.offerPrice ?? product.price) || 0);
+      const qty = Number(item.quantity || 0);
       const itemTotal = price * qty;
       itemsSubtotal += itemTotal;
 
@@ -74,7 +77,7 @@ export const generateInvoice = (order, user) => {
       }
 
       doc.fillColor("#2C3E50").fontSize(10)
-        .text(product.name, 60, position, { width: 250 })
+        .text(product.name || "Product", 60, position, { width: 250 })
         .text(qty.toString(), 320, position, { width: 50, align: "center" })
         .text(`${price.toFixed(2)}`, 380, position, { width: 80, align: "right" })
         .text(`${itemTotal.toFixed(2)}`, 470, position, { width: 80, align: "right" });
@@ -90,22 +93,18 @@ export const generateInvoice = (order, user) => {
     doc.moveTo(350, position).lineTo(550, position).lineWidth(1).strokeColor("#BDC3C7").stroke();
     position += 10;
 
-    // Subtotal
     doc.fontSize(10).fillColor("#7F8C8D").text("Subtotal:", 350, position, { width: 100, align: "right" });
     doc.fillColor("#2C3E50").text(`LKR ${itemsSubtotal.toFixed(2)}`, 470, position, { width: 80, align: "right" });
 
-    // Delivery Fee
     position += 18;
     doc.fillColor("#7F8C8D").text("Delivery Fee:", 350, position, { width: 100, align: "right" });
     
-    // Check for Free Delivery
     if (deliveryFee === 0) {
       doc.fillColor("#27AE60").font("Helvetica-Bold").text("FREE", 470, position, { width: 80, align: "right" });
     } else {
       doc.fillColor("#2C3E50").font("Helvetica").text(`LKR ${deliveryFee.toFixed(2)}`, 470, position, { width: 80, align: "right" });
     }
 
-    // Grand Total
     position += 25;
     doc.fontSize(14).font("Helvetica-Bold").fillColor("#1A5276")
       .text("GRAND TOTAL:", 300, position, { width: 150, align: "right" });
