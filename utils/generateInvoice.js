@@ -46,7 +46,7 @@ export const generateInvoice = (order, user) => {
     doc.fillColor("#2C3E50").font("Helvetica").fontSize(10)
       .text(`Invoice ID: #${order._id.toString().toUpperCase()}`, 350, infoTop + 15)
       .text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 350, infoTop + 30)
-      .text(`Status: ${order.paymentType === 'COD' ? 'COD' : 'Paid Online'}`, 350, infoTop + 45);
+      .text(`Status: ${order.paymentType === 'COD' ? 'Paid COD' : 'Paid Online'}`, 350, infoTop + 45);
 
     /* ================= TABLE HEADER ================= */
     const tableTop = 230;
