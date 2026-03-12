@@ -12,13 +12,13 @@ import multer from "multer";
 
 const router = express.Router();
 
-// ✅ Multer setup for image uploads
+//  Multer setup for image uploads
 const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
 // ------------------------- ROUTES -------------------------
 
-// Add product (only seller)
+// Add product )
 router.post("/add", authSeller, upload.array("images", 5), addProduct);
 
 // List all products
@@ -32,6 +32,8 @@ router.post("/stock", authSeller, changeStock);
 
 // Get products by category
 router.get("/category/:category", productsByCategory);
+
+//delete products
 
 router.post("/delete", deleteProduct);
 

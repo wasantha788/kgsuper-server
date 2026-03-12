@@ -169,32 +169,39 @@ export const stripeWebhooks = async (req, res) => {
       payment_intent: paymentIntent.id,
     });
 
-    if (sessions.data.length > 0) {
-      const { orderId, userId } = sessions.data[0].metadata;
+    // ✅ CORRECTED WEBHOOK BLOCK
+if (sessions.data.length > 0) {
+  const { orderId, userId } = sessions.data[0].metadata;
 
-      // ✅ FIX: Populate 'product' in items so generateInvoice can access item.product.name
-      const order = await Order.findByIdAndUpdate(
-        orderId,
-        { isPaid: true, status: "Order Placed" },
-        { new: true }
-      ).populate("items.product"); 
+  // Chain the populates together without a semicolon in between
+  const order = await Order.findByIdAndUpdate(
+    orderId,
+    { isPaid: true, status: "Order Placed" },
+    { new: true }
+  )
+    .populate("items.product")
+    .populate("address"); // Now address details will be available for generateInvoice
 
-      const user = await User.findByIdAndUpdate(
-        userId,
-        { cartItems: {} },
-        { new: true }
-      );
+  // Clear user cart
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { cartItems: {} },
+    { new: true }
+  );
 
-      if (order && user) {
-        const invoicePath = await generateInvoice(order, user);
-        await sendReceiptEmail(user.email, invoicePath);
+  if (order && user) {
+    // Both order.address and order.items[i].product are now fully populated objects
+    const invoicePath = await generateInvoice(order, user);
+    
+    // Send email and then delete the temp file
+    await sendReceiptEmail(user.email, invoicePath);
+    
+    // Optional: Clean up the file after sending if you aren't doing it inside sendReceiptEmail
+    // if (fs.existsSync(invoicePath)) fs.unlinkSync(invoicePath);
       }
     }
   }
-
-  res.json({ received: true });
-};
-
+}
 // ------------------------
 // GET SINGLE ORDER BY ID
 // ------------------------

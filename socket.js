@@ -5,10 +5,10 @@ import OrderHistory from "./models/OrderHistory.js";
 export let io;
 
 // ---------------- SOCKET STATE ----------------
-const deliveryBoys = new Map();      // deliveryBoyId → socketId
-const activeConnections = new Map(); // roomId → Map(socketId → { name })
+const deliveryBoys = new Map();      
+const activeConnections = new Map(); 
 const userNames = new Map();  
-const onlineDeliveryBoys = new Map();        // socketId → userName
+const onlineDeliveryBoys = new Map();       
 
 export const setIO = (serverIo) => {
   io = serverIo;

@@ -62,13 +62,13 @@ const allowedOrigins = [
       })
     );
 
-    // 4️⃣ STATIC FILES
+    // STATIC FILES
     app.use(
       "/uploads",
       express.static(path.join(process.cwd(), "uploads"))
     );
 
-    // 5️⃣ ROUTES
+    // ROUTES
     app.get("/", (req, res) => res.send("API is Working ✅"));
     app.use("/api/user", userRouter);
     app.use("/api/seller", sellerRouter);
@@ -83,7 +83,7 @@ const allowedOrigins = [
     app.use("/api/ai", chat);
     
 
-    // 6️⃣ SOCKET.IO SETUP
+    // SOCKET.IO SETUP
     const io = new Server(server, {
       cors: {
         origin: allowedOrigins,
