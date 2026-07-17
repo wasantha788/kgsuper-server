@@ -12,6 +12,7 @@ import Order from "../models/Order.js";
 import User from "../models/user.js"; 
 
 // Utils & Controllers
+import {getSellerOrders} from "../controllers/seller-controller.js";
 import { generateInvoice } from "../utils/generateInvoice.js";
 import { sendReceiptEmail } from "../utils/sendReceipt.js";
 import {
@@ -26,7 +27,6 @@ import {
   assignDeliveryBoy
 } from "../controllers/orderControler.js";
 
-dotenv.config();
 const orderRouter = express.Router();
 
 // --- Brevo Configuration ---
@@ -35,24 +35,55 @@ const apiKey = defaultClient.authentications["api-key"];
 apiKey.apiKey = process.env.BREVO_API_KEY;
 
 /* =========================
-   PLACEMENT (Customers)
+   PLACEMENT & STATIC ROUTES (Evaluated First)
 ========================= */
 orderRouter.post("/cod", authUser, placeOrderCOD);
 orderRouter.post("/stripe", authUser, placeOrderStripe);
 
-/* =========================
-   MANAGEMENT (Sellers)
-========================= */
-orderRouter.get("/seller", authSeller, getAllOrders);
+// Move static customer routes up
+orderRouter.get("/my-orders/all", authUser, getUserOrders);
+
+// Move static seller routes up
+orderRouter.get("/seller", authSeller, getSellerOrders);
 orderRouter.put("/status/:orderId", authSeller, updateOrderStatusByAdmin);
 orderRouter.delete("/delete/:orderId", authSeller, deleteOrder);
-orderRouter.post("/assign", authSeller, assignDeliveryBoy); // Added authSeller for security
+orderRouter.post("/assign", authSeller, assignDeliveryBoy); 
 
 /* =========================
-   USER ACTIONS (Customers)
+   EMAIL RECEIPT & USER CANCEL (Static/Specific paths)
 ========================= */
-orderRouter.get("/user", authUser, getUserOrders);
 orderRouter.put("/cancel/:orderId", authUser, cancelOrderByUser);
+
+orderRouter.post("/send-receipt", authSeller, async (req, res) => {
+  try {
+    const { orderId, email, pdfData, fileName } = req.body;
+    
+    if (!orderId || !email || !pdfData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Order ID, email, and PDF data are required." 
+      });
+    }
+
+    const pdfBuffer = Buffer.from(pdfData, "base64");
+
+    await sendReceiptEmail(email, {
+      content: pdfBuffer,
+      filename: fileName || `Receipt_${orderId}.pdf`,
+    });
+
+    res.status(200).json({ success: true, message: "Receipt emailed successfully!" });
+  } catch (err) {
+    console.error("Receipt Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* =========================
+   DYNAMIC PARAMETER ROUTES (Evaluated Last)
+========================= */
+// ⚡ FIX: Placed below static endpoints so it won't intercept "/seller"
+orderRouter.get("/:orderId", authUser, getOrderById);
 
 // Customer updates chat status
 orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
@@ -63,7 +94,6 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ success: false, message: "Order not found" });
 
-    // Ensure the user updating the status actually owns the order
     if (req.user.id.toString() !== order.userId?.toString() && req.user.id.toString() !== order.user?.toString()) {
         return res.status(403).json({ success: false, message: "Not authorized to update this order" });
     }
@@ -76,62 +106,5 @@ orderRouter.put("/:id/chat-status", authUser, async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
-
-/* =========================
-   EMAIL RECEIPT (Sellers)
-========================= */
-orderRouter.post("/send-receipt", authSeller, async (req, res) => {
-  let invoicePath = null;
-
-  try {
-    const { orderId } = req.body;
-    if (!orderId) return res.status(400).json({ success: false, message: "Order ID is required" });
-
-    // FIXED: Populating BOTH items.product AND address
-    const order = await Order.findById(orderId)
-      .populate("items.product")
-      .populate("address") // CRITICAL: This fixes the "undefined" address/name issue
-      .populate("user");    // Optional: Get user directly from order
-
-    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
-
-    // Use the populated user or fetch manually as you did
-    const user = order.user; 
-    if (!user) return res.status(404).json({ success: false, message: "Recipient user not found" });
-
-    // Generate PDF invoice
-    invoicePath = await generateInvoice(order, user);
-
-    // Send email
-    await sendReceiptEmail(user.email, invoicePath);
-
-    res.status(200).json({ success: true, message: "Receipt sent successfully!" });
-  } catch (err) {
-    console.error("Receipt Error:", err.message);
-    res.status(500).json({ success: false, message: err.message });
-  } finally {
-    if (invoicePath && fs.existsSync(invoicePath)) {
-      try {
-        fs.unlinkSync(invoicePath);
-      } catch (cleanupErr) {
-        console.error("Cleanup Error:", cleanupErr.message);
-      }
-    }
-  }
-});
-/* =========================
-   GENERAL (Shared)
-========================= */
-orderRouter.get("/:orderId", (req, res, next) => {
-    if (req.headers.token || req.headers.seller_token || req.headers.delivery_token) {
-        let authMethod;
-        if (req.headers.seller_token) authMethod = authSeller;
-        else if (req.headers.delivery_token) authMethod = authDelivery; 
-        else authMethod = authUser;
-        
-        return authMethod(req, res, next);
-    }
-    return res.status(401).json({ success: false, message: "Authentication required" });
-}, getOrderById);
 
 export default orderRouter;

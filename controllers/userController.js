@@ -32,13 +32,12 @@ export const register = async (req, res) => {
 
         return res.json({
             success: true,
-            user: { id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} },
+            user: { _id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} }, // ✅ Changed id to _id
         });
     } catch (error) {
         res.json({ success: false, message: error.message });
     }
 };
-
 /**
  * Login User
  */
@@ -58,13 +57,12 @@ export const login = async (req, res) => {
 
         return res.json({
             success: true,
-            user: { id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} },
+            user: { _id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} }, // ✅ Changed id to _id
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error." });
     }
 };
-
 /**
  * Update Password (Matched to Frontend 'Security Settings')
  */
@@ -130,19 +128,12 @@ export const updateProfile = async (req, res) => {
  * Check Auth / Get User Data
  */
 export const isAuth = async (req, res) => {
-    try {
-        const token = req.cookies.token;
-        if (!token) return res.status(401).json({ success: false, message: "Not authenticated." });
-
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select("-password");
-        
-        if (!user) return res.json({ success: false, message: "User not found." });
-
-        return res.json({ success: true, user });
-    } catch (error) {
-        return res.status(401).json({ success: false, message: "Invalid or expired token." });
-    }
+  try {
+    // req.user එකේ දැන් _id, role, isAdmin සියල්ල පවතී (Middleware එක නිසා)
+    return res.status(200).json({ success: true, user: req.user });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 /**

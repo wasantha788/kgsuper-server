@@ -5,6 +5,7 @@ import {
   verifySellerEmail,
 } from "../controllers/sellerAuthController.js";
 
+
 const router = express.Router();
 
 router.post("/register", registerSellerRequest);

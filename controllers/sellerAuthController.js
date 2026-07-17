@@ -124,10 +124,11 @@ export const loginSellerRequest = async (req, res) => {
       });
     }
 
+    // Token එක generate කරන තැන සාමාන්‍යයෙන් මෙන්න මේ වගේ වෙන්න ඕනේ:
     const token = jwt.sign(
-      { id: seller._id },
+      { id: seller._id, email: seller.email, role: seller.role }, // 👈 'id' එක අනිවාර්යයෙන්ම තියෙන්න ඕනේ
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: '7d' }
     );
 
     res.status(200).json({

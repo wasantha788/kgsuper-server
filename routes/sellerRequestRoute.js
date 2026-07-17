@@ -2,10 +2,8 @@ import express from "express";
 import multer from "multer";
 import SellerRequestProduct from "../models/sellerRequestProduct.js";
 import { v2 as cloudinary } from "cloudinary";
-import dotenv from "dotenv";
 import SibApiV3Sdk from "sib-api-v3-sdk";
 
-dotenv.config();
 const router = express.Router();
 
 // ---------------- Multer ----------------

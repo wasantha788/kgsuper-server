@@ -16,7 +16,8 @@ const authUser = async (req, res, next) => {
     if (!decoded?.id)
       return res.status(401).json({ success: false, message: "Invalid token" });
 
-    const user = await User.findById(decoded.id);
+    // 💡 වෙනස් කළ යුතු පේළිය: _id සමඟ role සහ isAdmin ද ලබා ගන්න
+    const user = await User.findById(decoded.id).select("_id role isAdmin");
     if (!user)
       return res.status(401).json({ success: false, message: "User not found" });
 

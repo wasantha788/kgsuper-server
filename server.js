@@ -34,7 +34,7 @@ const server = http.createServer(app);
 
 // Allowed frontend URLs
 const allowedOrigins = [
-  "https://kgsuper-client-production.up.railway.app",
+  "http://localhost:5173",
 ];
 
 (async () => {
@@ -57,11 +57,10 @@ const allowedOrigins = [
     app.use(cookieParser());
     app.use(
       cors({
-        origin: allowedOrigins,
+        origin: true,  // ✅ Development එකට මේක දාන්න (පසුව Production එකේදී නැවත හරියට set කරන්න)
         credentials: true,
       })
     );
-
     // STATIC FILES
     app.use(
       "/uploads",
@@ -95,9 +94,10 @@ const allowedOrigins = [
 
     setIO(io);
 
-    // 7️⃣ START SERVER (Railway requires 0.0.0.0)
-    server.listen(port, "0.0.0.0", () => {
-      console.log(`🚀 Server + Socket.IO running on port ${port}`);
+    
+     const PORT = 4000;
+     server.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
     });
 
   } catch (error) {
