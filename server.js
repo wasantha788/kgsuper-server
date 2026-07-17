@@ -34,7 +34,7 @@ const server = http.createServer(app);
 
 // Allowed frontend URLs
 const allowedOrigins = [
-  "http://localhost:5173",
+  "https://kgsuper-client-production.up.railway.app",
 ];
 
 (async () => {
@@ -95,9 +95,9 @@ const allowedOrigins = [
     setIO(io);
 
     
-     const PORT = 4000;
-     server.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
+    // 7️⃣ START SERVER (Railway requires 0.0.0.0)
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`🚀 Server + Socket.IO running on port ${port}`);
     });
 
   } catch (error) {
