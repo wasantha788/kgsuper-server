@@ -13,10 +13,10 @@ dotenv.config();
 /* =========================
    JWT TOKEN GENERATOR
 ========================= */
-const generateToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET || "secretkey", {
+  const generateToken = (id, role = 'user') =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET || "secretkey", {
     expiresIn: "7d",
-  });
+  }); 
 
  
   /* =========================
@@ -40,7 +40,7 @@ export const registerDeliveryBoy = async (req, res) => {
     const exists = await DeliveryBoy.findOne({ email });
     if (exists)
       return res.json({ success: false, message: "Email already exists" });
-
+    
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -55,7 +55,7 @@ export const registerDeliveryBoy = async (req, res) => {
 
     res.json({
       success: true,
-      token: generateToken(deliveryBoy._id),
+      token: generateToken(deliveryBoy._id, 'delivery'),
       user: {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
