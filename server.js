@@ -93,11 +93,17 @@ const allowedOrigins = [
     });
 
     setIO(io);
+    // Simple IP check route
+    app.get("/my-ip", (req, res) => {
+      res.json({
+        ip: req.ip,
+        forwarded: req.headers["x-forwarded-for"]
+      });
+    });
 
-    
-    // 7️⃣ START SERVER (Railway requires 0.0.0.0)
-    server.listen(port, "0.0.0.0", () => {
-      console.log(`🚀 Server + Socket.IO running on port ${port}`);
+      const PORT = 4000;
+      server.listen(PORT, () => {
+      console.log(`🚀 Server is running on port ${PORT}`);
     });
 
   } catch (error) {
