@@ -57,7 +57,7 @@ const allowedOrigins = [
     app.use(cookieParser());
     app.use(
       cors({
-        origin: true,  // ✅ Development එකට මේක දාන්න (පසුව Production එකේදී නැවත හරියට set කරන්න)
+        origin: allowedOrigins,// ✅ Development එකට මේක දාන්න (පසුව Production එකේදී නැවත හරියට set කරන්න)
         credentials: true,
       })
     );
@@ -93,7 +93,8 @@ const allowedOrigins = [
     });
 
     setIO(io);
-    // Simple IP check route
+
+     // Simple IP check route
     app.get("/my-ip", (req, res) => {
       res.json({
         ip: req.ip,
@@ -101,10 +102,13 @@ const allowedOrigins = [
       });
     });
 
-      const PORT = 4000;
-      server.listen(PORT, () => {
-      console.log(`🚀 Server is running on port ${PORT}`);
-    });
+      // 7️⃣ START SERVER (Railway requires 0.0.0.0)
+   const PORT = process.env.PORT || 4000;
+   server.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
+
+    
 
   } catch (error) {
     console.error("❌ Server failed to start:", error);
