@@ -138,6 +138,7 @@ export const loginSellerRequest = async (req, res) => {
         id: seller._id,
         name: seller.name,
         email: seller.email,
+        role: 'seller', // ✅ එක් කරන්න
       },
     });
 

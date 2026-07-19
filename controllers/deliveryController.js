@@ -93,6 +93,7 @@ export const loginDeliveryBoy = async (req, res) => {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
+          role: 'delivery' // <-- ADD THIS
       
       },
     });
