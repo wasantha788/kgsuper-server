@@ -86,22 +86,23 @@ export const loginDeliveryBoy = async (req, res) => {
     if (!isMatch)
       return res.json({ success: false, message: "Invalid email or password" });
 
+    // ✅ Token එකට role එක ඇතුළත් කරන්න
+    const token = generateToken(deliveryBoy._id, 'delivery');
+
     res.json({
       success: true,
-      token: generateToken(deliveryBoy._id),
+      token,
       user: {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
-          role: 'delivery' // <-- ADD THIS
-      
+        role: 'delivery',      // ✅ Frontend එක හඳුනා ගැනීමට
       },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 /* =========================
    GET DELIVERY BOY ORDERS (MY ORDERS)
 ========================= */
