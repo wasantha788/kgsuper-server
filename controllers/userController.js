@@ -32,7 +32,8 @@ export const register = async (req, res) => {
 
         return res.json({
             success: true,
-            user: { _id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} }, // ✅ Changed id to _id
+            token,  // ✅ ADDED
+            user: { _id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} },
         });
     } catch (error) {
         res.json({ success: false, message: error.message });
@@ -57,7 +58,8 @@ export const login = async (req, res) => {
 
         return res.json({
             success: true,
-            user: { _id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} }, // ✅ Changed id to _id
+            token,  // ✅ ADDED
+            user: { _id: user._id, email: user.email, name: user.name, cartItems: user.cartItems || {} },
         });
     } catch (error) {
         res.status(500).json({ success: false, message: "Server error." });
