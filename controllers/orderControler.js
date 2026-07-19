@@ -198,10 +198,10 @@ export const getOrderById = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // Find the order first without forcing user ownership matching immediately
     const order = await Order.findById(orderId)
       .populate("items.product")
-      .populate("assignedDeliveryBoy", "name phone vehicleType");
+      .populate("assignedDeliveryBoy", "name phone vehicleType")
+      .populate("address");   // ✅ Added
 
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
@@ -209,41 +209,34 @@ export const getOrderById = async (req, res) => {
 
     // --- Dynamic Authorization Check ---
     
-    // Scenario A: Request is made by a Seller (Allow full access)
     if (req.seller) {
       return res.json({ success: true, order });
     }
 
-    // Scenario B: Request is made by a Delivery Rider (Verify assignment)
     if (req.deliveryBoy || req.delivery) {
       const deliveryId = req.deliveryBoy?.id || req.delivery?.id;
       const isAssigned = order.assignedDeliveryBoy?._id?.toString() === deliveryId?.toString();
-      
       if (!isAssigned) {
         return res.status(403).json({ success: false, message: "Unauthorized: You are not the assigned rider for this order" });
       }
       return res.json({ success: true, order });
     }
 
-    // Scenario C: Request is made by a Customer User (Verify ownership)
     if (req.user) {
       const userId = req.user.id || req.user._id;
       const isOwner = order.user?.toString() === userId?.toString();
-      
       if (!isOwner) {
         return res.status(403).json({ success: false, message: "Unauthorized access to this order" });
       }
       return res.json({ success: true, order });
     }
 
-    // If none of the auth states matched
     return res.status(401).json({ success: false, message: "Authentication credentials not recognized" });
 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // ------------------------
 // GET USER ORDERS
 // ------------------------
