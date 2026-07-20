@@ -88,11 +88,12 @@ export const loginDeliveryBoy = async (req, res) => {
 
     res.json({
       success: true,
-      token: generateToken(deliveryBoy._id),
+      token: generateToken(deliveryBoy._id,"delivery"),
       user: {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
+         role: "delivery",
       
       },
     });
