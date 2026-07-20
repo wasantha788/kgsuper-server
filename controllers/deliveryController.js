@@ -10,13 +10,15 @@ import SibApiV3Sdk from "sib-api-v3-sdk";
 import dotenv from "dotenv";
 dotenv.config();
 
+
 /* =========================
    JWT TOKEN GENERATOR
 ========================= */
-const generateToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET || "secretkey", {
+const generateToken = (id, role) =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET || "secretkey", {
     expiresIn: "7d",
   });
+
 
  
   /* =========================
@@ -54,18 +56,19 @@ export const registerDeliveryBoy = async (req, res) => {
     });
 
     res.json({
-      success: true,
-      token: generateToken(deliveryBoy._id),
-      user: {
-        _id: deliveryBoy._id,
-        name: deliveryBoy.name,
-        email: deliveryBoy.email,
-        role: deliveryBoy.role,
-        isAvailable: deliveryBoy.isAvailable,
-        phone: deliveryBoy.phone,
-        vehicleType: deliveryBoy.vehicleType,
-      },
-    });
+  success: true,
+  token: generateToken(deliveryBoy._id, "delivery"),
+  user: {
+    _id: deliveryBoy._id,
+    name: deliveryBoy.name,
+    email: deliveryBoy.email,
+    role: "delivery",
+    isAvailable: deliveryBoy.isAvailable,
+    phone: deliveryBoy.phone,
+    vehicleType: deliveryBoy.vehicleType,
+  },
+});
+
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -88,15 +91,15 @@ export const loginDeliveryBoy = async (req, res) => {
 
     res.json({
       success: true,
-      token: generateToken(deliveryBoy._id,"delivery"),
+      token: generateToken(deliveryBoy._id, "delivery"),
       user: {
         _id: deliveryBoy._id,
         name: deliveryBoy.name,
         email: deliveryBoy.email,
-         role: "delivery",
-      
+        role: "delivery",
       },
     });
+
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
