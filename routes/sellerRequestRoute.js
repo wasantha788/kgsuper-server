@@ -1,63 +1,43 @@
 import express from "express";
 import multer from "multer";
 import SellerRequestProduct from "../models/sellerRequestProduct.js";
-import fs from "fs";
-import nodemailer from "nodemailer";
-import dotenv from "dotenv";
-
-dotenv.config();
+import { v2 as cloudinary } from "cloudinary";
+import SibApiV3Sdk from "sib-api-v3-sdk";
 
 const router = express.Router();
 
-/* =====================================================
-   CHECK ENV VARIABLES
-===================================================== */
+// ---------------- Multer ----------------
+const storage = multer.memoryStorage();
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-  console.error("❌ EMAIL_USER or EMAIL_PASS missing in .env file");
-}
-
-/* =====================================================
-   MULTER CONFIG
-===================================================== */
-
-const uploadDir = "uploads/";
-
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) =>
-    cb(null, `${Date.now()}-${file.originalname}`),
+// ---------------- Cloudinary ----------------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-});
+// ---------------- Brevo Email ----------------
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const emailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
-/* =====================================================
-   EMAIL TRANSPORTER (SAFE VERSION)
-===================================================== */
-
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
+const sendEmail = async ({ to, subject, html }) => {
+  try {
+    await emailApi.sendTransacEmail({
+      sender: { name: "K.G SUPER Marketplace", email: process.env.BREVO_USER },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    });
+    return true;
+  } catch (err) {
+    console.error("Email failed:", err.message);
+    return false;
+  }
 };
 
-/* =====================================================
-   GET ALL REQUESTS
-===================================================== */
-
+// ---------------- GET all requests ----------------
 router.get("/", async (req, res) => {
   try {
     const products = await SellerRequestProduct.find().sort({ createdAt: -1 });
@@ -68,161 +48,93 @@ router.get("/", async (req, res) => {
   }
 });
 
-/* =====================================================
-   CREATE SELLER REQUEST
-===================================================== */
-
+// ---------------- POST product ----------------
 router.post("/products", upload.array("images", 4), async (req, res) => {
   try {
-    const imagePaths = req.files ? req.files.map(f => f.path) : [];
+    if (!req.files || req.files.length === 0)
+      return res.status(400).json({ success: false, message: "At least one image is required" });
 
-    const newProduct = new SellerRequestProduct({
-      ...req.body,
-      price: Number(req.body.price),
-      quantity: Number(req.body.quantity),
-      images: imagePaths,
-      status: "pending",
-    });
+    const uploadedImages = await Promise.all(
+      req.files.map(file =>
+        new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: "seller_requests" },
+            (err, result) => err ? reject(err) : resolve({ url: result.secure_url, publicId: result.public_id })
+          );
+          stream.end(file.buffer);
+        })
+      )
+    );
 
-    await newProduct.save();
-
-    res.status(201).json({
-      success: true,
-      message: "Product sent for admin approval!",
-    });
-
+    const product = new SellerRequestProduct({ ...req.body, images: uploadedImages, status: "pending" });
+    await product.save();
+    res.status(201).json({ success: true, product });
   } catch (err) {
-    console.error("Submission Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
+    console.error("POST Error:", err);
+    res.status(500).json({ success: false, message: "Upload failed: " + err.message });
   }
 });
 
-/* =====================================================
-   UPDATE STATUS + SEND EMAIL (PROPER FIX)
-===================================================== */
-
+// ---------------- PATCH status ----------------
 router.patch("/update-status/:id", async (req, res) => {
   try {
     const { status } = req.body;
+    if (!["approved", "rejected"].includes(status))
+      return res.status(400).json({ success: false, message: "Invalid status" });
 
-    if (!["approved", "rejected"].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid status",
-      });
-    }
-
-    const product = await SellerRequestProduct.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    );
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
+    const product = await SellerRequestProduct.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
 
     let emailSent = false;
-
     if (product.sellerEmail) {
-      try {
-        const transporter = createTransporter();
-
-        const info = await transporter.sendMail({
-          from: `"K.G SUPER Marketplace" <${process.env.EMAIL_USER}>`,
-          to: product.sellerEmail,
-          subject: `Your Product Has Been ${status.toUpperCase()}`,
-          html: `
-            <h2>Hello ${product.sellerName || "Seller"},</h2>
-            <p>Your product "<strong>${product.name}</strong>" 
-            has been <strong>${status.toUpperCase()}</strong>.</p>
+      emailSent = await sendEmail({
+        to: product.sellerEmail,
+        subject: `Product Update: ${status.toUpperCase()}`,
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+            <h2 style="color: #059669;">Hello ${product.sellerName},</h2>
+            <p>Your product "<strong>${product.name}</strong>" has been <strong>${status.toUpperCase()}</strong> by the administrator.</p>
+            <p>Log in to your portal to see more details.</p><br><p> Contact us 035-2261599 / 070-1835063 </p><br><p>Email: kgsupershop@gmail.com</p>
             <br/>
-            <p>Thank you for using K.G SUPER Marketplace.</p>
-          `,
-        });
-
-        console.log("✅ Email sent:", info.response);
-        emailSent = true;
-
-      } catch (emailError) {
-        console.error("❌ EMAIL FAILED:", emailError.message);
-      }
-    } else {
-      console.log("⚠ No seller email provided");
+            <p style="font-size: 12px; color: #64748b;">Thank you for choosing K.G SUPER Marketplace.</p>
+          </div>
+        `
+      });
     }
 
     res.json({
       success: true,
-      message: emailSent
-        ? "Status updated & email sent"
-        : "Status updated but email failed",
-      emailSent,
+      message: emailSent ? "Status updated and seller notified" : "Status updated (Email failed)",
       product,
     });
-
   } catch (err) {
-    console.error("Update Status Error:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    console.error("PATCH Error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
-/* =====================================================
-   DELETE PRODUCT
-===================================================== */
-
+// ---------------- DELETE product ----------------
 router.delete("/:id", async (req, res) => {
   try {
     const product = await SellerRequestProduct.findById(req.params.id);
-
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
-    }
+    if (!product) return res.status(404).json({ success: false, message: "Product not found" });
 
     if (product.images?.length) {
-      product.images.forEach(path => {
-        if (fs.existsSync(path)) {
-          fs.unlinkSync(path);
+      for (const img of product.images) {
+        if (img.publicId) {
+          try { await cloudinary.uploader.destroy(img.publicId); } 
+          catch (err) { console.error("Cloudinary delete failed:", err.message); }
         }
-      });
+      }
     }
 
     await SellerRequestProduct.findByIdAndDelete(req.params.id);
-
-    res.json({
-      success: true,
-      message: "Product deleted successfully",
-    });
-
+    res.json({ success: true, message: "Product and images deleted" });
   } catch (err) {
-    console.error("Delete Error:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    console.error("DELETE Error:", err);
+    res.status(500).json({ success: false, message: "Delete failed: " + err.message });
   }
 });
 
-// Example Express Route
-router.get("/products", async (req, res) => {
-  try {
-    // Only fetch products where status is 'pending' (or all if you prefer)
-    const products = await Product.find({ status: "pending" }); 
-    res.status(200).json({ products });
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching products" });
-  }
-});
 
 export default router;

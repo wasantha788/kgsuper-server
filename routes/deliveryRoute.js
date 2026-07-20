@@ -12,12 +12,14 @@ import {
   acceptOrder,
   cancelOrderByDelivery,
   getMyOrders,
-  updateOrderStatusByDelivery,
+  orderUpdated,
   markDelivered,
   sendPaymentOTP,
   verifyPaymentOTP 
   
 } from "../controllers/deliveryController.js";
+
+
 
 const router = express.Router();
 
@@ -53,7 +55,7 @@ router.get("/my-orders", authDelivery, getMyOrders);
 router.put("/cancel", authDelivery, cancelOrderByDelivery);
 router.put("/accept/:orderId", authDelivery, acceptOrder);
 router.put("/delivered/:orderId", authDelivery, markDelivered);
-router.put("/order/:orderId/status", authDelivery, updateOrderStatusByDelivery);
+router.put("/order/:orderId/status", authDelivery, orderUpdated);
 
 
 router.post('/order/:orderId/send-payment-otp', authDelivery,sendPaymentOTP);

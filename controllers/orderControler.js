@@ -3,34 +3,38 @@ import Product from "../models/product.js";
 import User from "../models/user.js";
 import Stripe from "stripe";
 import DeliveryBoy from "../models/DeliveryBoy.js";
+import { generateInvoice } from "../utils/generateInvoice.js";
+import { sendReceiptEmail } from "../utils/sendReceipt.js";
 
 // ------------------------
 // PLACE ORDER - COD
 // ------------------------
 export const placeOrderCOD = async (req, res) => {
   try {
-    const { userId, items, address, chatEnabled, locationEnabled } = req.body;
+    const { items, address, chatEnabled, locationEnabled } = req.body;
+    const userId = req.user.id;
 
     if (!userId || !address || !items || items.length === 0) {
       return res.json({ success: false, message: "Invalid order data" });
     }
 
-    let amount = 0;
+    let subtotal = 0;
 
     for (const item of items) {
       const product = await Product.findById(item.product);
       if (!product) return res.json({ success: false, message: "Product not found" });
+      
       const price = product.offerPrice ?? product.price;
-      amount += price * item.quantity;
+      subtotal += price * item.quantity;
     }
 
-    // Add 2% Tax
-    amount += Math.floor(amount * 0.02);
+    const deliveryFee = subtotal >= 5000 ? 0 : 300;
+    const finalAmount = subtotal + deliveryFee;
 
     const order = await Order.create({
-      user: req.user.id,
+      user: userId,
       items,
-      amount,
+      amount: finalAmount, 
       address,
       paymentType: "COD",
       isPaid: false,
@@ -38,7 +42,11 @@ export const placeOrderCOD = async (req, res) => {
       locationEnabled: locationEnabled ?? false,
     });
 
-    res.json({ success: true, message: "Order placed successfully", order });
+    res.json({ 
+      success: true, 
+      message: "Order placed successfully", 
+      order 
+    });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
@@ -58,14 +66,13 @@ export const placeOrderStripe = async (req, res) => {
     }
 
     const stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const TAX_RATE = 0.02; // 2% tax
-
     const productData = [];
     let subtotal = 0;
 
     for (const item of items) {
       const product = await Product.findById(item.product);
-      if (!product) continue;
+      // 💡 නිෂ්පාදනයක් නොමැති නම් error එකක් දීම වඩාත් ආරක්ෂිතයි (Price tampering වැළැක්වීමට)
+      if (!product) return res.json({ success: false, message: `Product not found: ${item.product}` });
 
       const price = product.offerPrice ?? product.price;
       subtotal += price * item.quantity;
@@ -77,12 +84,13 @@ export const placeOrderStripe = async (req, res) => {
       });
     }
 
-    const totalAmount = +(subtotal * (1 + TAX_RATE)).toFixed(2);
+    const deliveryFee = subtotal >= 5000 ? 0 : 300;
+    const totalAmount = subtotal + deliveryFee;
 
     const order = await Order.create({
       user: userId,
       items,
-      amount: totalAmount,
+      amount: totalAmount, 
       address,
       paymentType: "online",
       isPaid: false,
@@ -94,10 +102,21 @@ export const placeOrderStripe = async (req, res) => {
       price_data: {
         currency: "lkr",
         product_data: { name: item.name },
-        unit_amount: Math.round(item.price * (1 + TAX_RATE) * 100),
+        unit_amount: Math.round(item.price * 100), 
       },
       quantity: item.quantity,
     }));
+
+    if (deliveryFee > 0) {
+      line_items.push({
+        price_data: {
+          currency: "lkr",
+          product_data: { name: "Delivery Fee" },
+          unit_amount: deliveryFee * 100, 
+        },
+        quantity: 1,
+      });
+    }
 
     const session = await stripeInstance.checkout.sessions.create({
       line_items,
@@ -128,57 +147,109 @@ export const stripeWebhooks = async (req, res) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (error) {
-    console.log("❌ Webhook signature failed:", error.message);
     return res.status(400).send(`Webhook Error: ${error.message}`);
   }
 
-  console.log("✅ Stripe Event:", event.type);
+  if (event.type === "payment_intent.succeeded") {
+    const paymentIntent = event.data.object;
 
-  switch (event.type) {
+    const sessions = await stripeInstance.checkout.sessions.list({
+      payment_intent: paymentIntent.id,
+    });
 
-    // ✅ PAYMENT SUCCESS
-    case "checkout.session.completed": {
-      const session = event.data.object;
-      const { orderId, userId } = session.metadata;
+    if (sessions.data.length > 0) {
+      const { orderId, userId } = sessions.data[0].metadata;
 
-      console.log("💰 Payment Success for Order:", orderId);
+      const order = await Order.findByIdAndUpdate(
+        orderId,
+        { isPaid: true, status: "Order Placed" },
+        { new: true }
+      )
+        .populate("items.product")
+        .populate("address");
 
-      await Order.findByIdAndUpdate(orderId, {
-        isPaid: true,
-        status: "Processing"
-      });
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { cartItems: {} },
+        { new: true }
+      );
 
-      await User.findByIdAndUpdate(userId, {
-        cartItems: {}
-      });
-
-      break;
+      if (order && user) {
+        try {
+          const invoicePath = await generateInvoice(order, user);
+          await sendReceiptEmail(user.email, invoicePath);
+        } catch (emailErr) {
+          console.error("Failed to send invoice email:", emailErr.message);
+        }
+      }
     }
-
-    // ❌ PAYMENT FAILED / EXPIRED
-    case "checkout.session.expired": {
-      const session = event.data.object;
-      const orderId = session.metadata.orderId;
-
-      console.log("❌ Payment Expired for Order:", orderId);
-
-      await Order.findByIdAndDelete(orderId);
-      break;
-    }
-
-    default:
-      console.log(`⚠️ Unhandled event type ${event.type}`);
   }
-
-  res.json({ received: true });
+  
+  // 💡 FIX: Stripe වෙත සාර්ථකව ලැබුණු බව දන්වා 200 Response එකක් යැවීම
+  res.status(200).json({ received: true });
 };
 
 // ------------------------
+// GET SINGLE ORDER BY ID
+// ------------------------
+// controllers/orderController.js
+
+export const getOrderById = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await Order.findById(orderId)
+      .populate("items.product")
+      .populate("assignedDeliveryBoy", "name phone vehicleType")
+      .populate("address");   // ✅ Added
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // --- Dynamic Authorization Check ---
+    
+    if (req.seller) {
+      return res.json({ success: true, order });
+    }
+
+    if (req.deliveryBoy || req.delivery) {
+      const deliveryId = req.deliveryBoy?.id || req.delivery?.id;
+      const isAssigned = order.assignedDeliveryBoy?._id?.toString() === deliveryId?.toString();
+      if (!isAssigned) {
+        return res.status(403).json({ success: false, message: "Unauthorized: You are not the assigned rider for this order" });
+      }
+      return res.json({ success: true, order });
+    }
+
+    if (req.user) {
+      const userId = req.user.id || req.user._id;
+      const isOwner = order.user?.toString() === userId?.toString();
+      if (!isOwner) {
+        return res.status(403).json({ success: false, message: "Unauthorized access to this order" });
+      }
+      return res.json({ success: true, order });
+    }
+
+    return res.status(401).json({ success: false, message: "Authentication credentials not recognized" });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+// ------------------------
 // GET USER ORDERS
 // ------------------------
+// controllers/orderController.js
+
 export const getUserOrders = async (req, res) => {
   try {
-    const userId = req.user.id;
+    // 💡 FIX: Safely fallback to .id if ._id is not populated by the middleware
+    const userId = req.user?._id || req.user?.id; 
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "User not authenticated accurately" });
+    }
 
     const orders = await Order.find({ user: userId })
       .populate("items.product")
@@ -186,28 +257,6 @@ export const getUserOrders = async (req, res) => {
       .sort({ createdAt: -1 });
 
     res.json({ success: true, orders });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
-  }
-};
-
-// ------------------------
-// GET SINGLE ORDER BY ID
-// ------------------------
-export const getOrderById = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const userId = req.user.id;
-
-    const order = await Order.findOne({ _id: orderId, user: userId })
-      .populate("items.product")
-      .populate("assignedDeliveryBoy", "name phone vehicleType");
-
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    res.json({ success: true, order });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
@@ -274,14 +323,14 @@ export const deleteOrder = async (req, res) => {
 };
 
 // ------------------------
-// UPDATE ORDER STATUS (ADMIN)
+// UPDATE ORDER STATUS (ADMIN / SELLER)
 // ------------------------
 export const updateOrderStatusByAdmin = async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status } = req.body;
 
-    const allowedStatuses = ["Order Placed", "Processing", "Out for delivery", "Shipped", "Delivered", "Cancelled"];
+    const allowedStatuses = ["Order Placed", "Processing", "Out for delivery", "Delivered", "Cancelled"];
     if (!allowedStatuses.includes(status))
       return res.status(400).json({ success: false, message: "Invalid status" });
 
@@ -302,13 +351,15 @@ export const updateOrderStatusByAdmin = async (req, res) => {
 // ------------------------
 export const getAllOrdersForSeller = async (req, res) => {
   try {
+    // 💡 FIX: items.product එක populate කරන ලදී සහ response එක { success: true, orders } ලෙස සකසන ලදී.
     const orders = await Order.find()
       .populate("user", "name email")
       .populate("assignedDeliveryBoy", "name phone")
+      .populate("items.product") 
       .populate("address")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, data: orders });
+    res.status(200).json({ success: true, orders }); 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

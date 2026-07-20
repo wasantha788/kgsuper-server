@@ -20,7 +20,7 @@ export const addProduct = async (req, res) => {
     const product = await Product.create({
       ...productData,
       image: imagesUrl,
-      inStock: productData.inStock ?? true, // default true
+      inStock: productData.inStock ?? true, 
     });
 
     res.json({ success: true, product, message: "Product Added Successfully" });

@@ -2,18 +2,20 @@ import Order from "./models/Order.js";
 import DeliveryBoy from "./models/DeliveryBoy.js";
 import OrderHistory from "./models/OrderHistory.js";
 
+
 export let io;
 
 // ---------------- SOCKET STATE ----------------
-const deliveryBoys = new Map();      // deliveryBoyId → socketId
-const activeConnections = new Map(); // roomId → Map(socketId → { name })
-const userNames = new Map();         // socketId → userName
+const deliveryBoys = new Map();      
+const activeConnections = new Map(); 
+const userNames = new Map();  
+const onlineDeliveryBoys = new Map();       
 
 export const setIO = (serverIo) => {
   io = serverIo;
 
   io.on("connection", (socket) => {
-    console.log("🔌❤️ New connection:", socket.id);
+    console.log("🔌❤️ New connection:", );
 
     // ---------------- BASIC REGISTRATION ----------------
     socket.on("set_name", (name) => {
@@ -23,7 +25,36 @@ export const setIO = (serverIo) => {
     socket.on("join_seller", () => {
       socket.join("sellerRoom");
     });
+    
+     // ---------------- DELIVERY BOY ONLINE COUNT ----------------
+    socket.on("join_delivery", (deliveryBoy) => {
+      onlineDeliveryBoys.set(socket.id, deliveryBoy);
 
+      io.emit("deliveryBoyCount", onlineDeliveryBoys.size);
+    });
+
+    socket.on("cancel-delivery", async ({ orderId }) => {
+  try {
+    // Order එකේ Status එක නැවත "Order Placed" කරන්න
+    const order = await Order.findByIdAndUpdate(
+      orderId,
+      { status: "Order Placed", assignedDeliveryBoy: null },
+      { new: true }
+    );
+
+    if (order) {
+      // Seller Room එකට දැනුම් දෙන්න (Frontend එකට යවන්න)
+      io.to("sellerRoom").emit("orderUnaccepted", orderId);
+      
+      // Delivery Room එකෙන් ඒ Order එක Remove කරන්න
+      io.to("deliveryRoom").emit("orderRemoved", { orderId });
+      
+      console.log(`⏰ Order ${orderId} cancelled due to timeout.`);
+    }
+  } catch (err) {
+    console.error("❌ cancel-delivery error:", err);
+  }
+});
     // ---------------- DELIVERY AGENT REGISTRATION ----------------
     socket.on("registerDeliveryBoy", async (deliveryBoyId) => {
       if (!deliveryBoyId) return;
@@ -114,18 +145,28 @@ export const setIO = (serverIo) => {
 
     // ---------------- ORDER FLOW LOGIC ----------------
     socket.on("send-to-delivery", async ({ order }) => {
-      if (!order?._id) return;
-      try {
-        const freshOrder = await Order.findById(order._id)
-          .populate("items.product")
-          .populate("address")
-          .populate("assignedDeliveryBoy", "name phone vehicleType");
+  if (!order?._id) return;
+  try {
+    // ✅ Status එක "Out for delivery" ලෙස Update කරන්න, assignedDeliveryBoy null කරන්න
+    const updatedOrder = await Order.findByIdAndUpdate(
+      order._id,
+      { status: "Out for delivery", assignedDeliveryBoy: null },
+      { new: true }  // Update වූ Document එක Return කරන්න
+    )
+      .populate("items.product")
+      .populate("address")
+      .populate("assignedDeliveryBoy", "name phone vehicleType");
 
-        io.to("deliveryRoom").emit("newDeliveryOrder", freshOrder);
-      } catch (err) {
-        console.error("❌ send-to-delivery error:", err);
-      }
-    });
+    if (updatedOrder) {
+      // Delivery Room එකට යවන්න
+      io.to("deliveryRoom").emit("newDeliveryOrder", updatedOrder);
+      // Seller Room එකටත් Update කරන්න (Frontend එකේ Dashboard එක Update වෙනවා)
+      io.to("sellerRoom").emit("orderUpdated", updatedOrder);
+    }
+  } catch (err) {
+    console.error("❌ send-to-delivery error:", err);
+  }
+});
 
     socket.on("accept-order", async ({ orderId }) => {
       try {
@@ -224,6 +265,9 @@ export const setIO = (serverIo) => {
     // ---------------- DISCONNECT ----------------
     socket.on("disconnect", () => {
       console.log("❌ Disconnected:", socket.id);
+
+        onlineDeliveryBoys.delete(socket.id); // ✅ remove from online list
+      io.emit("deliveryBoyCount", onlineDeliveryBoys.size);
 
       if (socket.deliveryBoyId) deliveryBoys.delete(socket.deliveryBoyId);
       userNames.delete(socket.id);

@@ -3,6 +3,7 @@ import { registerSellerRequest } from "../controllers/sellerRegisterController.j
 import { loginSellerRequest } from "../controllers/sellerLoginController.js";
 
 
+
 const router = express.Router();
 
 router.post("/sellerrequestusers", registerSellerRequest);
