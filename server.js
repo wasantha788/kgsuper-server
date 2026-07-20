@@ -34,7 +34,7 @@ const server = http.createServer(app);
 
 // Allowed frontend URLs
 const allowedOrigins = [
-  "https://kgsuper-client-production.up.railway.app ",
+  "https://kgsuper.onrender.com",
 ];
 
 (async () => {
