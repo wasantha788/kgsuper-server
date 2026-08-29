@@ -244,21 +244,20 @@ export const getOrderById = async (req, res) => {
 
 export const getUserOrders = async (req, res) => {
   try {
-    // 💡 FIX: Safely fallback to .id if ._id is not populated by the middleware
-    const userId = req.user?._id || req.user?.id; 
-
+    const userId = req.user?._id || req.user?.id;
     if (!userId) {
-      return res.status(401).json({ success: false, message: "User not authenticated accurately" });
+      return res.status(401).json({ success: false, message: "User not authenticated" });
     }
 
     const orders = await Order.find({ user: userId })
-      .populate("items.product")
+      .populate("items.plant")
       .populate("address")
+      .populate("assignedDeliveryBoy", "name phone vehicleType")   // ✅ added this line
       .sort({ createdAt: -1 });
 
     res.json({ success: true, orders });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
