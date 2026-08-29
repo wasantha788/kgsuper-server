@@ -250,7 +250,7 @@ export const getUserOrders = async (req, res) => {
     }
 
     const orders = await Order.find({ user: userId })
-      .populate("items.plant")
+      .populate("items.product")
       .populate("address")
       .populate("assignedDeliveryBoy", "name phone vehicleType")   // ✅ added this line
       .sort({ createdAt: -1 });
