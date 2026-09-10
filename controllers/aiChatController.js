@@ -21,7 +21,7 @@ const aiChatController = async (req, res) => {
                     content: message,
                 },
             ],
-             model: "llama-3.1-8b-instant",// You can also use "mixtral-8x7b-32768"
+             model: "openai/gpt-oss-120b",// You can also use "mixtral-8x7b-32768"
         });
 
         const aiReply = chatCompletion.choices[0]?.message?.content || "";
